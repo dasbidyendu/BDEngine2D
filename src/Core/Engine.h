@@ -4,6 +4,8 @@
 #include "Managers/ResourceManager.h"
 #include "ECS/Registry.h"
 #include "ECS/Systems.h"
+#include <fstream>
+#include <sstream>
 
 
 class Engine {
@@ -17,6 +19,9 @@ public:
 	void Run();
 
 	void ApplyTheme(const std::string& themeName);
+
+	void SaveConfig();
+	void LoadConfig();
 
 	bool IsMouseOverUI = false;
 
@@ -65,7 +70,7 @@ private:
 	bool showSettings = false;
 	int settingsActiveTab = 0;
 
-	
+	std::string lastThemePath = "assets/themes/dark-gold.txt";
 	void ScanThemes();
 };
 

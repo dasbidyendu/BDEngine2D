@@ -7,10 +7,11 @@ Engine::Engine(int width, int height, const std::string& title)
 	:screenWidth(width),screenHeight(height),windowTitle(title) {
 	
 	SetConfigFlags(FLAG_WINDOW_RESIZABLE);
-
 	InitWindow(screenWidth, screenHeight, windowTitle.c_str());
 	SetTargetFPS(0);
 	isRunning = true;
+
+	LoadConfig();
 
 	camera.target = { 0.0f, 0.0f };
 	camera.offset = { 0.0f, 0.0f };
@@ -22,7 +23,45 @@ Engine::Engine(int width, int height, const std::string& title)
 }
 
 Engine::~Engine() {
+	SaveConfig();
 	CloseWindow();
+}
+
+void Engine::LoadConfig() {
+	TraceLog(LOG_INFO, "CONFIG: Loading EditorConfig.ini...");
+	std::ifstream file("EditorConfig.ini");
+	if (!file.is_open()) {
+		TraceLog(LOG_WARNING, "CONFIG: No config file found. Using defaults.");
+		return;
+	}
+
+	std::string line;
+	while (std::getline(file, line)) {
+		std::istringstream is_line(line);
+		std::string key;
+		if (std::getline(is_line, key, '=')) {
+			std::string value;
+			if (std::getline(is_line, value)) {
+				if (key == "LastTheme") lastThemePath = value;
+				if (key == "ShowGrid") showGrid = (value == "true");
+				if (key == "GridSize") gridSize = std::stoi(value);
+			}
+		}
+	}
+	file.close();
+
+	ApplyTheme(lastThemePath);
+}
+
+void Engine::SaveConfig() {
+	TraceLog(LOG_INFO, "CONFIG: Saving EditorConfig.ini...");
+	std::ofstream file("EditorConfig.ini");
+	if (file.is_open()) {
+		file << "LastTheme=" << lastThemePath << "\n";
+		file << "ShowGrid=" << (showGrid ? "true" : "false") << "\n";
+		file << "GridSize=" << gridSize << "\n";
+		file.close();
+	}
 }
 
 void Engine::Run() {
@@ -328,7 +367,8 @@ void Engine::ApplyTheme(const std::string& filePath) {
 	GuiSetStyle(DEFAULT, LINE_COLOR, ColorToInt(currentTheme.accentColor));
 	GuiSetStyle(LABEL, TEXT_COLOR_NORMAL, ColorToInt(currentTheme.accentColor));
 
-	TraceLog(LOG_INFO, "THEME_SYSTEM: Theme '%s' applied successfully.", filePath.c_str());
+	lastThemePath = filePath;
+	TraceLog(LOG_INFO, "THEME_SYSTEM: Theme '%s' applied and saved to config.", filePath.c_str());
 }
 
 namespace EditorSystem {
