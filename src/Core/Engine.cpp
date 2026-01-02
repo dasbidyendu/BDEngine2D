@@ -8,6 +8,12 @@ Engine::Engine(int width, int height, const std::string& title)
 	
 	SetConfigFlags(FLAG_WINDOW_RESIZABLE);
 	InitWindow(screenWidth, screenHeight, windowTitle.c_str());
+	int monitor = GetCurrentMonitor();
+	if (!IsWindowFullscreen()) {
+		SetWindowSize(GetMonitorWidth(monitor), GetMonitorHeight(monitor));
+		ToggleFullscreen();
+	}
+
 	SetTargetFPS(0);
 	isRunning = true;
 
@@ -30,34 +36,46 @@ Engine::~Engine() {
 void Engine::LoadConfig() {
 	TraceLog(LOG_INFO, "CONFIG: Loading EditorConfig.ini...");
 	std::ifstream file("EditorConfig.ini");
-	if (!file.is_open()) {
-		TraceLog(LOG_WARNING, "CONFIG: No config file found. Using defaults.");
-		return;
-	}
 
-	std::string line;
-	while (std::getline(file, line)) {
-		std::istringstream is_line(line);
-		std::string key;
-		if (std::getline(is_line, key, '=')) {
-			std::string value;
-			if (std::getline(is_line, value)) {
+	// Set default resolution before loading
+	int targetWidth = 1280;
+	int targetHeight = 720;
+
+	if (file.is_open()) {
+		std::string line;
+		while (std::getline(file, line)) {
+			std::istringstream is_line(line);
+			std::string key, value;
+			if (std::getline(is_line, key, '=') && std::getline(is_line, value)) {
 				if (key == "LastTheme") lastThemePath = value;
+				if (key == "LastFont") lastFontPath = value;
 				if (key == "ShowGrid") showGrid = (value == "true");
 				if (key == "GridSize") gridSize = std::stoi(value);
+				if (key == "ScreenWidth") targetWidth = std::stoi(value);
+				if (key == "ScreenHeight") targetHeight = std::stoi(value);
 			}
 		}
+		file.close();
 	}
-	file.close();
 
+	// Apply Resolution
+	screenWidth = targetWidth;
+	screenHeight = targetHeight;
+	SetWindowSize(screenWidth, screenHeight);
+
+	// Apply Assets
 	ApplyTheme(lastThemePath);
+	ScanFonts();
+	LoadEngineFont(lastFontPath);
 }
 
 void Engine::SaveConfig() {
-	TraceLog(LOG_INFO, "CONFIG: Saving EditorConfig.ini...");
 	std::ofstream file("EditorConfig.ini");
 	if (file.is_open()) {
+		file << "ScreenWidth=" << GetScreenWidth() << "\n";
+		file << "ScreenHeight=" << GetScreenHeight() << "\n";
 		file << "LastTheme=" << lastThemePath << "\n";
+		file << "LastFont=" << lastFontPath << "\n";
 		file << "ShowGrid=" << (showGrid ? "true" : "false") << "\n";
 		file << "GridSize=" << gridSize << "\n";
 		file.close();
@@ -101,7 +119,6 @@ void Engine::InitGame() {
 }
 
 void Engine::Update() {
-
 	if (IsWindowResized()) {
 		screenWidth = GetScreenWidth();
 		screenHeight = GetScreenHeight();
@@ -110,49 +127,36 @@ void Engine::Update() {
 	float dt = GetFrameTime();
 	Vector2 mousePos = GetMousePosition();
 
-	// Update Stats Data
 	stats.frameCount++;
 
-	// Toggle Settings with F1 (Check this first!)
 	if (IsKeyPressed(KEY_F1)) showSettings = !showSettings;
-
-	// Toggle Editor Mode with TAB
 	if (IsKeyPressed(KEY_TAB)) isEditorMode = !isEditorMode;
-
-	// Toggle Grid with G
-	if (isEditorMode && IsKeyPressed(KEY_G)) {
-		showGrid = !showGrid;
-	}
+	if (isEditorMode && IsKeyPressed(KEY_G)) showGrid = !showGrid;
+	
 
 	bool mouseInSidebar = (isEditorMode && mousePos.x < 250);
 	bool mouseInInspector = (isEditorMode && mousePos.x > (screenWidth - 250));
 	bool mouseInUI = mouseInSidebar || mouseInInspector;
 
-	
 	if (!showSettings) {
-
-		//  Game Input & Camera Controls
+		// Game Input & Camera Controls
 		if (!mouseInSidebar) {
 			InputSystem::Update(registry);
 			ControlSystem::Update(registry);
 
 			if (isEditorMode) {
-				// Panning (Right Mouse Button)
 				if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) {
 					Vector2 delta = GetMouseDelta();
 					camera.target.x -= delta.x / camera.zoom;
 					camera.target.y -= delta.y / camera.zoom;
 				}
 
-				// Zooming (Mouse Wheel)
 				float wheel = GetMouseWheelMove();
 				if (wheel != 0) {
 					Vector2 mouseWorldPos = GetScreenToWorld2D(GetMousePosition(), camera);
 					camera.offset = GetMousePosition();
 					camera.target = mouseWorldPos;
 					camera.zoom += wheel * zoomSensitivity;
-
-					// Clamp Zoom
 					if (camera.zoom < 0.1f) camera.zoom = 0.1f;
 					if (camera.zoom > 5.0f) camera.zoom = 5.0f;
 				}
@@ -161,32 +165,32 @@ void Engine::Update() {
 
 		MovementSystem::Update(registry, dt);
 
-		//  Editor Logic 
 		if (isEditorMode) {
-			// Select Asset from Sidebar
-			if (mouseInSidebar && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-				int idx = (int)((mousePos.y - 50) / 55);
-				if (idx >= 0 && idx < editorAssets.size()) {
-					selectedAssetIndex = idx;
+			// --- NEW DRAG & DROP PLACEMENT ---
+			if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON) && draggedAssetIndex != -1) {
+				// Only place if dropped outside the sidebar
+				if (mousePos.x > 250 && !mouseInInspector) {
+					Vector2 worldMouse = GetScreenToWorld2D(mousePos, camera);
+
+					Vector2 snappedPos;
+					snappedPos.x = floor(worldMouse.x / gridSize) * gridSize;
+					snappedPos.y = floor(worldMouse.y / gridSize) * gridSize;
+
+					Entity newEntity = registry.CreateEntity();
+					registry.AddComponent(newEntity, TransformComponent{ snappedPos, {1,1}, 0.0f });
+
+					// Use the texture from the manager using the asset name
+					registry.AddComponent(newEntity, SpriteComponent{
+						assets.GetTexture(editorAssets[draggedAssetIndex].name), WHITE
+						});
 				}
+				draggedAssetIndex = -1; // End drag state
 			}
-			// Place Asset in World
-			else if (selectedAssetIndex != -1 && !mouseInSidebar && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-				Vector2 worldMouse = GetScreenToWorld2D(GetMousePosition(), camera);
-				Vector2 snappedPos;
-				snappedPos.x = floor(worldMouse.x / gridSize) * gridSize;
-				snappedPos.y = floor(worldMouse.y / gridSize) * gridSize;
 
-				Entity newEntity = registry.CreateEntity();
-				registry.AddComponent(newEntity, TransformComponent{ snappedPos, {1,1}, 0.0f });
-				registry.AddComponent(newEntity, SpriteComponent{ assets.GetTexture(editorAssets[selectedAssetIndex].name), WHITE });
-
-				selectedAssetIndex = -1; // Deselect after placing
-			}
-			// Select Entity in World
-			else if (!mouseInUI && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-				Vector2 worldMouse = GetScreenToWorld2D(GetMousePosition(), camera);
-				selectedEntity = -1; // Reset selection first
+			// --- WORLD SELECTION ---
+			if (!mouseInUI && IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && draggedAssetIndex == -1) {
+				Vector2 worldMouse = GetScreenToWorld2D(mousePos, camera);
+				selectedEntity = -1;
 
 				for (Entity i = 0; i < MAX_ENTITIES; i++) {
 					if (registry.entityMasks[i].any() && registry.HasComponent(i, COMP_TRANSFORM) && registry.HasComponent(i, COMP_SPRITE)) {
@@ -202,20 +206,17 @@ void Engine::Update() {
 				}
 			}
 
-			// Right Click to Cancel Placement
-			if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) selectedAssetIndex = -1;
+			// Right Click to Cancel Drag
+			if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) draggedAssetIndex = -1;
 
 			// Delete Entity
-			if (selectedEntity != -1) {
-				if (IsKeyPressed(KEY_DELETE)) {
-					registry.entityMasks[selectedEntity].reset();
-					selectedEntity = -1;
-				}
+			if (selectedEntity != -1 && IsKeyPressed(KEY_DELETE)) {
+				registry.entityMasks[selectedEntity].reset();
+				selectedEntity = -1;
 			}
 		}
 	}
 
-	// Toggle VSync with F3
 	if (IsKeyPressed(KEY_F3)) {
 		if (IsWindowState(FLAG_VSYNC_HINT)) {
 			ClearWindowState(FLAG_VSYNC_HINT);
@@ -226,10 +227,17 @@ void Engine::Update() {
 		}
 	}
 
-	// Toggle Stats with F2
 	if (IsKeyPressed(KEY_F2)) stats.Toggle();
-}
 
+	if (IsKeyPressed(KEY_F11) || (IsKeyDown(KEY_LEFT_ALT) && IsKeyPressed(KEY_ENTER))) {
+		ToggleFullscreen();
+	}
+
+	if (IsWindowResized() || IsWindowFullscreen()) {
+		screenWidth = GetScreenWidth();
+		screenHeight = GetScreenHeight();
+	}
+}
 
 void Engine::Render() {
 	BeginDrawing();
@@ -277,20 +285,25 @@ void Engine::Render() {
 
 	UISystem::UpdateAndDraw(registry);
 	if (isEditorMode) {
-		EditorSystem::DrawAssetBrowser(editorAssets);
+		EditorSystem::DrawAssetBrowser(editorAssets,currentBrowserPath,draggedAssetIndex);
 		if (selectedEntity >= 0 && selectedEntity < MAX_ENTITIES) {
 			if (registry.entityMasks[selectedEntity].none()) {
 				selectedEntity = -1;
 			}
 			else {
-				EditorSystem::DrawInspector(selectedEntity, registry, screenWidth, screenHeight);
+				EditorSystem::DrawInspector(selectedEntity, registry, GetScreenWidth(), GetScreenHeight());
 			}
 		}
 		else {
-			EditorSystem::DrawInspector(selectedEntity, registry, screenWidth, screenHeight);
+			EditorSystem::DrawInspector(selectedEntity, registry, GetScreenWidth(), GetScreenHeight());
+		}
+		if (draggedAssetIndex != -1) {
+			Vector2 mPos = GetMousePosition();
+			DrawTextureEx(editorAssets[draggedAssetIndex].preview,
+				{ mPos.x - 20, mPos.y - 20 }, 0, 1.0f, Fade(WHITE, 0.6f));
 		}
 	}
-	DebugSystem::Draw(registry,stats,screenWidth);
+	DebugSystem::Draw(registry,stats,GetScreenWidth());
 
 	if (isEditorMode) {
 		EditorSystem::DrawSettingsMenu(showSettings, settingsActiveTab, registry, this);
@@ -317,6 +330,41 @@ void Engine::ScanThemes() {
 
 	TraceLog(LOG_INFO, "THEME_SYSTEM: Scan complete. Total themes found: %d", themeFiles.size());
 	UnloadDirectoryFiles(files);
+}
+
+void Engine::ScanFonts() {
+	fontFiles.clear();
+	FilePathList files = LoadDirectoryFiles("assets/fonts");
+	for (unsigned int i = 0; i < files.count; i++) {
+		if (IsFileExtension(files.paths[i], ".ttf") || IsFileExtension(files.paths[i], ".otf")) {
+			fontFiles.push_back(files.paths[i]);
+			TraceLog(LOG_INFO, "FONT_SYSTEM: Found font: %s", files.paths[i]);
+		}
+	}
+	UnloadDirectoryFiles(files);
+}
+
+void Engine::LoadEngineFont(const std::string& path) {
+	if (!FileExists(path.c_str())) {
+		TraceLog(LOG_WARNING, "FONT_SYSTEM: Font file not found: %s", path.c_str());
+		return;
+	}
+
+	// Unload old font if it exists to prevent memory leaks
+	if (engineFont.texture.id != 0) UnloadFont(engineFont);
+
+	// Load new font (using size 32 for better scaling)
+	engineFont = LoadFontEx(path.c_str(), 24, 0, 250);
+
+	SetTextureFilter(engineFont.texture, TEXTURE_FILTER_BILINEAR);
+
+	GuiSetFont(engineFont);
+
+	ApplyTheme(lastThemePath);
+
+	lastFontPath = path;
+
+	TraceLog(LOG_INFO, "FONT_SYSTEM: Successfully loaded font: %s", path.c_str());
 }
 
 void Engine::ApplyTheme(const std::string& filePath) {
@@ -382,22 +430,19 @@ namespace EditorSystem {
 		DrawRectangleRec({ 0, 0, sw, sh }, Fade(BLACK, 0.85f));
 
 		// 2. Window
-		if (GuiWindowBox({ 50, 50, sw - 100, sh - 100 }, "GLOBAL ENGINE SETTINGS")) {
+		float winW = sw - 100;
+		float winH = sh - 100;
+		if (GuiWindowBox({ 50, 50, winW, winH }, "GLOBAL ENGINE SETTINGS")) {
 			open = false;
 		}
 
 		// 3. Tabs
 		const char* tabs[] = { "THEME", "GRAPHICS", "INPUT", "EDITOR" };
-		GuiTabBar({ 60, 85, sw - 120, 30 }, tabs, 4, &activeTab);
+		GuiTabBar({ 60, 85, winW - 20, 30 }, tabs, 4, &activeTab);
 
 		float contentX = 70;
 		float contentY = 130;
 
-		// --- (REMOVE LATER) ---
-		char debugMsg[128];
-		sprintf(debugMsg, "Active Tab: %d | Theme Count: %d", activeTab, (int)engine->themeFiles.size());
-		DrawText(debugMsg, (int)contentX, (int)sh - 50, 20, RED);
-		// ------------------------------------
 
 		switch (activeTab) {
 		case 0: // THEME TAB
@@ -421,6 +466,67 @@ namespace EditorSystem {
 		case 1: // GRAPHICS
 			GuiLabel({ contentX, contentY, 200, 20 }, "Graphics Settings (WIP)");
 			break;
+		case 2: // INPUT
+			GuiLabel({ contentX, contentY, 200, 20 }, "Input Settings (WIP)");
+			break;
+		case 3: // EDITOR
+		{
+			GuiLabel({ contentX, contentY, 200, 20 }, "Editor Appearance:");
+
+			float panelWidth = 350;
+			float panelHeight = 300;
+
+			// 1. SCROLL PANEL SETUP
+			static Vector2 scrollPos = { 0, 0 };
+			Rectangle viewScroll = { contentX, contentY + 60, panelWidth, panelHeight };
+			Rectangle contentScroll = { 0, 0, panelWidth - 20, (float)engine->fontFiles.size() * 35 };
+
+			GuiLabel({ contentX, contentY + 35, 200, 20 }, "[ Installed Fonts ]");
+
+			Rectangle view = GuiScrollPanel(viewScroll, NULL, contentScroll, &scrollPos);
+
+			// 2. FONT LIST WITH SCISSORING
+			BeginScissorMode((int)view.x, (int)view.y, (int)view.width, (int)view.height);
+			{
+				for (int i = 0; i < (int)engine->fontFiles.size(); i++) {
+					std::string path = engine->fontFiles[i];
+					std::string fileName = GetFileName(path.c_str());
+
+					Rectangle btnRect = {
+						view.x + scrollPos.x + 5,
+						view.y + scrollPos.y + (i * 35) + 5,
+						panelWidth - 40,
+						30
+					};
+
+					// Highlight the currently active font
+					if (engine->lastFontPath == path) {
+						GuiSetState(STATE_FOCUSED);
+					}
+
+					if (GuiButton(btnRect, fileName.c_str())) {
+						engine->LoadEngineFont(path);
+					}
+					GuiSetState(STATE_NORMAL);
+				}
+			}
+			EndScissorMode();
+
+			// 3. TEXT SIZE SLIDER 
+			static float currentFontSize = 18.0f;
+			GuiLabel({ contentX + 380, contentY + 60, 200, 20 }, "UI Text Size:");
+			if (GuiSlider({ contentX + 380, contentY + 85, 200, 20 }, "12", "32", currentFontSize, 12, 32)) {
+				GuiSetStyle(DEFAULT, TEXT_SIZE, (int)currentFontSize);
+			}
+
+			// 4. ALIGNMENT
+			static int alignment = 0; // 0-Left, 1-Center, 2-Right
+			GuiLabel({ contentX + 380, contentY + 120, 200, 20 }, "Button Alignment:");
+			if (GuiButton({ contentX + 380, contentY + 145, 60, 25 }, "LEFT")) GuiSetStyle(BUTTON, TEXT_ALIGNMENT, TEXT_ALIGN_LEFT);
+			if (GuiButton({ contentX + 445, contentY + 145, 60, 25 }, "CENTER")) GuiSetStyle(BUTTON, TEXT_ALIGNMENT, TEXT_ALIGN_CENTER);
+
+			break;
+		}
 		}
 	}
 }

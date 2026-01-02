@@ -116,28 +116,98 @@ namespace UISystem {
 
 
 namespace EditorSystem {
-    inline void DrawAssetBrowser(const std::vector<AssetEntry>& assets) {
+    inline void DrawAssetBrowser(const std::vector<AssetEntry>& allAssets, std::string& currentPath, int& draggedAssetIndex) {
+        float currentSH = (float)GetScreenHeight();
+		float currentSW = (float)GetScreenWidth();
         float width = 250;
-        DrawRectangle(0, 0, width, GetScreenHeight(), Fade(DARKGRAY, 0.95f));
-        DrawLine(width, 0, width, GetScreenHeight(), BLACK);
-        DrawText("ASSETS", 10, 10, 20, GOLD);
+        float footerHeight = 30;
 
-        for (int i = 0; i < assets.size(); i++) {
-            Rectangle slot = { 5, 50.0f + (i * 50), width - 10, 45 };
-            bool hovered = CheckCollisionPointRec(GetMousePosition(), slot);
+        // Sidebar Background & Border
+        DrawRectangle(0, 0, width, currentSH, GetColor(GuiGetStyle(DEFAULT, BACKGROUND_COLOR)));
+        DrawLine(width, 0, width, currentSH, Fade(BLACK, 0.5f));
 
-            DrawRectangleRec(slot, hovered ? GRAY : Color{ 40, 40, 40, 255 });
-
-            if (assets[i].isTexture) {
-                DrawTexture(assets[i].preview, slot.x + 2, slot.y + 2, WHITE);
-            }
-
-            DrawText(assets[i].name.c_str(), slot.x + 50, slot.y + 15, 12, hovered ? WHITE : LIGHTGRAY);
-
-            if (hovered && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-                TraceLog(LOG_INFO, "Selected Asset: %s", assets[i].name.c_str());
+        //  Navigation Header (Breadcrumbs)
+        DrawRectangle(0, 0, width, 40, Fade(BLACK, 0.2f));
+        if (currentPath != "assets") {
+            if (GuiButton({ 5, 10, 30, 20 }, "#01#")) {
+                size_t lastSlash = currentPath.find_last_of("/\\");
+                currentPath = (lastSlash != std::string::npos) ? currentPath.substr(0, lastSlash) : "assets";
             }
         }
+        DrawText(GetFileName(currentPath.c_str()), 45, 15, 10, GOLD);
+
+        //  Scrolling Area Setup
+        float startY = 40;
+        static Vector2 scroll = { 0, 0 };
+        Rectangle viewArea = { 0, startY, width, currentSH - startY - footerHeight };
+
+        // Filter logic: Only show direct children of currentPath
+        std::vector<int> visibleIndices;
+        for (int i = 0; i < (int)allAssets.size(); i++) {
+            std::string parent = fs::path(allAssets[i].path).parent_path().string();
+            std::replace(parent.begin(), parent.end(), '\\', '/');
+            std::string normalizedCurrent = currentPath;
+            std::replace(normalizedCurrent.begin(), normalizedCurrent.end(), '\\', '/');
+
+            if (parent == normalizedCurrent) visibleIndices.push_back(i);
+        }
+
+        Rectangle content = { 0, 0, width - 20, (float)visibleIndices.size() * 50 };
+        Rectangle view = GuiScrollPanel(viewArea, NULL, content, &scroll);
+
+        //  Rendering & Drag Interaction
+        BeginScissorMode((int)view.x, (int)view.y, (int)view.width, (int)view.height);
+        for (int i = 0; i < (int)visibleIndices.size(); i++) {
+            int assetIdx = visibleIndices[i];
+            const auto& asset = allAssets[assetIdx];
+
+            float itemY = view.y + scroll.y + (i * 50);
+            Rectangle slot = { 5, itemY, width - 25, 45 };
+
+            if (itemY + 45 > view.y && itemY < view.y + view.height) {
+                bool hovered = CheckCollisionPointRec(GetMousePosition(), slot);
+                DrawRectangleRec(slot, hovered ? Fade(GOLD, 0.2f) : Fade(GRAY, 0.1f));
+
+                // Logic: Click Folder to Navigate, Press/Hold Texture to Drag
+                if (hovered && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                    if (asset.isFolder) {
+                        currentPath = asset.path;
+                    }
+                    else if (asset.isTexture) {
+                        draggedAssetIndex = assetIdx; // Start Dragging
+                    }
+                }
+
+                // Draw Icons
+                if (asset.isFolder) {
+                    DrawText("#05#", (int)slot.x + 10, (int)slot.y + 12, 20, GOLD);
+                }
+                else if (asset.isTexture) {
+                    DrawTexturePro(asset.preview, { 0, 0, 40, 40 }, { slot.x + 5, slot.y + 5, 35, 35 }, { 0,0 }, 0, WHITE);
+                }
+                else {
+                    DrawText("#12#", (int)slot.x + 10, (int)slot.y + 12, 20, LIGHTGRAY);
+                }
+
+                DrawText(asset.name.c_str(), (int)slot.x + 50, (int)slot.y + 15, 12, hovered ? WHITE : LIGHTGRAY);
+            }
+        }
+        EndScissorMode();
+
+        // Drag Visualizer
+        if (draggedAssetIndex != -1) {
+            Vector2 mPos = GetMousePosition();
+            DrawTextureEx(allAssets[draggedAssetIndex].preview, { mPos.x - 20, mPos.y - 20 }, 0, 1.0f, Fade(WHITE, 0.7f));
+
+            if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON)) {
+                // Drop logic will be handled in Engine::Update using this index
+                // We keep the index valid for one frame so Update() can see where it dropped
+            }
+        }
+
+        // Footer
+        DrawRectangle(0, currentSH - footerHeight, width, footerHeight, Fade(BLACK, 0.8f));
+        DrawText(TextFormat("Files: %d", (int)visibleIndices.size()), 10, (int)currentSH - 20, 10, DARKGRAY);
     }
 
     inline void DrawGrid(int size, Camera2D camera, int screenWidth, int screenHeight, Color color) {
@@ -170,18 +240,18 @@ namespace EditorSystem {
         if (reg.entityMasks[e].none()) return;
 
         float width = 250;
-        float x = screenWidth - width;
+        float x = (float)screenWidth - width;
         float padding = 10;
         float controlHeight = 24;
         float y = 40;
 
-        // 1. Draw Panel Background
-        DrawRectangle(x, 0, width, screenHeight, GetColor(GuiGetStyle(DEFAULT, BACKGROUND_COLOR)));
+        // Draw Panel Background
+        DrawRectangle(x, 0, width, (float)screenHeight, GetColor(GuiGetStyle(DEFAULT, BACKGROUND_COLOR)));
         DrawLine(x, 0, x, screenHeight, DARKGRAY);
 
         GuiLabel({ x + padding, 10, width, 30 }, TextFormat("INSPECTOR (Entity %i)", e));
 
-        // 2. Transform Component
+        //  Transform Component
         if (reg.HasComponent(e, COMP_TRANSFORM)) {
             auto& t = reg.transforms[e];
 
@@ -203,7 +273,7 @@ namespace EditorSystem {
             y += 130;
         }
 
-        // 3. Sprite Component
+        // Sprite Component
         if (reg.HasComponent(e, COMP_SPRITE)) {
             auto& s = reg.sprites[e];
             GuiGroupBox({ x + 5, y, width - 10, 60 }, "SPRITE TINT");
@@ -217,14 +287,10 @@ namespace EditorSystem {
             y += 80;
         }
 
-        // 4. Action Buttons
+        // Action Buttons
         if (GuiButton({ x + 5, (float)screenHeight - 40, width - 10, 30 }, "DELETE ENTITY")) {
             reg.entityMasks[e].reset();
-            // Note: We need a way to tell the engine that e is now -1
-            // We'll handle this in the next step
-        }
-
-        
+        }   
     }
     inline void DrawSettingsMenu(bool& open, int& activeTab, Registry& reg, Engine* engine);
 }

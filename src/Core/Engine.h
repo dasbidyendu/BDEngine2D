@@ -22,10 +22,18 @@ public:
 
 	void SaveConfig();
 	void LoadConfig();
+	void LoadEngineFont(const std::string& path);
 
 	bool IsMouseOverUI = false;
 
 	std::vector<std::string> themeFiles;
+	std::vector<std::string> fontFiles;
+
+	std::string lastFontPath = "assets/fonts/Mecha.ttf";
+
+	std::string currentBrowserPath = "assets";
+	int browserActiveTab = 0;
+	int draggedAssetIndex = -1;
 private:
 	void Update();
 
@@ -72,6 +80,9 @@ private:
 
 	std::string lastThemePath = "assets/themes/dark-gold.txt";
 	void ScanThemes();
+
+	Font engineFont;
+	void ScanFonts();
 };
 
 
