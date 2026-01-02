@@ -1,0 +1,6 @@
+name: Dark Gold
+bg: 20, 20, 20, 255
+panel: 40, 40, 40, 255
+grid: 100, 100, 100, 50
+accent: 255, 215, 0, 255
+fontSize: 18
