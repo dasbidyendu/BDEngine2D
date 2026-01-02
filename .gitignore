@@ -39,3 +39,9 @@
 
 # debug information files
 *.dwo
+/.vs
+/BDEngine/x64/Debug
+/BDEngine.sln
+*.vcxproj
+*.filters
+*.user
