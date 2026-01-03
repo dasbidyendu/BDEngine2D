@@ -12,6 +12,7 @@ public:
         velocities.resize(MAX_ENTITIES);
         inputComponents.resize(MAX_ENTITIES);
         uiComponents.resize(MAX_ENTITIES);
+        scripts.resize(MAX_ENTITIES);
         entityMasks.resize(MAX_ENTITIES);
     }
 
@@ -48,6 +49,11 @@ public:
         entityMasks[entity].set(COMP_UI);
     }
 
+    void AddComponent(Entity entity, ScriptComponent c) {
+        scripts[entity] = c;
+        entityMasks[entity].set(COMP_SCRIPT);
+    }
+
     bool HasComponent(Entity entity, ComponentType type) {
         return entityMasks[entity].test(type);
     }
@@ -61,6 +67,7 @@ public:
     std::vector<VelocityComponent> velocities;
     std::vector<InputComponent> inputComponents;
     std::vector<UIComponent> uiComponents;
+	std::vector<ScriptComponent> scripts;
 
     std::vector<std::bitset<COMP_COUNT>> entityMasks;
 

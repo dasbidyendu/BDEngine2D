@@ -2,18 +2,11 @@
 #include "raylib.h"
 #include "raygui.h"
 #include "Registry.h"
+#include "Core/Profiler.h"
 #include "Utils/AssetManager.h"
-
+#include "Managers/ScriptSystem.h"
 
 class Engine;
-
-struct EngineStats {
-    bool visible = false;
-    float totalTime = 0.0f;
-    uint64_t frameCount = 0;
-
-    void Toggle() { visible = !visible; }
-};
 
 namespace MovementSystem {
     inline void Update(Registry& reg, float dt) {
@@ -115,203 +108,82 @@ namespace UISystem {
 }
 
 
-namespace EditorSystem {
-    inline void DrawAssetBrowser(const std::vector<AssetEntry>& allAssets, std::string& currentPath, int& draggedAssetIndex) {
-        float currentSH = (float)GetScreenHeight();
-		float currentSW = (float)GetScreenWidth();
-        float width = 250;
-        float footerHeight = 30;
 
-        // Sidebar Background & Border
-        DrawRectangle(0, 0, width, currentSH, GetColor(GuiGetStyle(DEFAULT, BACKGROUND_COLOR)));
-        DrawLine(width, 0, width, currentSH, Fade(BLACK, 0.5f));
-
-        //  Navigation Header (Breadcrumbs)
-        DrawRectangle(0, 0, width, 40, Fade(BLACK, 0.2f));
-        if (currentPath != "assets") {
-            if (GuiButton({ 5, 10, 30, 20 }, "#01#")) {
-                size_t lastSlash = currentPath.find_last_of("/\\");
-                currentPath = (lastSlash != std::string::npos) ? currentPath.substr(0, lastSlash) : "assets";
-            }
-        }
-        DrawText(GetFileName(currentPath.c_str()), 45, 15, 10, GOLD);
-
-        //  Scrolling Area Setup
-        float startY = 40;
-        static Vector2 scroll = { 0, 0 };
-        Rectangle viewArea = { 0, startY, width, currentSH - startY - footerHeight };
-
-        // Filter logic: Only show direct children of currentPath
-        std::vector<int> visibleIndices;
-        for (int i = 0; i < (int)allAssets.size(); i++) {
-            std::string parent = fs::path(allAssets[i].path).parent_path().string();
-            std::replace(parent.begin(), parent.end(), '\\', '/');
-            std::string normalizedCurrent = currentPath;
-            std::replace(normalizedCurrent.begin(), normalizedCurrent.end(), '\\', '/');
-
-            if (parent == normalizedCurrent) visibleIndices.push_back(i);
-        }
-
-        Rectangle content = { 0, 0, width - 20, (float)visibleIndices.size() * 50 };
-        Rectangle view = GuiScrollPanel(viewArea, NULL, content, &scroll);
-
-        //  Rendering & Drag Interaction
-        BeginScissorMode((int)view.x, (int)view.y, (int)view.width, (int)view.height);
-        for (int i = 0; i < (int)visibleIndices.size(); i++) {
-            int assetIdx = visibleIndices[i];
-            const auto& asset = allAssets[assetIdx];
-
-            float itemY = view.y + scroll.y + (i * 50);
-            Rectangle slot = { 5, itemY, width - 25, 45 };
-
-            if (itemY + 45 > view.y && itemY < view.y + view.height) {
-                bool hovered = CheckCollisionPointRec(GetMousePosition(), slot);
-                DrawRectangleRec(slot, hovered ? Fade(GOLD, 0.2f) : Fade(GRAY, 0.1f));
-
-                // Logic: Click Folder to Navigate, Press/Hold Texture to Drag
-                if (hovered && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-                    if (asset.isFolder) {
-                        currentPath = asset.path;
-                    }
-                    else if (asset.isTexture) {
-                        draggedAssetIndex = assetIdx; // Start Dragging
-                    }
-                }
-
-                // Draw Icons
-                if (asset.isFolder) {
-                    DrawText("#05#", (int)slot.x + 10, (int)slot.y + 12, 20, GOLD);
-                }
-                else if (asset.isTexture) {
-                    DrawTexturePro(asset.preview, { 0, 0, 40, 40 }, { slot.x + 5, slot.y + 5, 35, 35 }, { 0,0 }, 0, WHITE);
-                }
-                else {
-                    DrawText("#12#", (int)slot.x + 10, (int)slot.y + 12, 20, LIGHTGRAY);
-                }
-
-                DrawText(asset.name.c_str(), (int)slot.x + 50, (int)slot.y + 15, 12, hovered ? WHITE : LIGHTGRAY);
-            }
-        }
-        EndScissorMode();
-
-        // Drag Visualizer
-        if (draggedAssetIndex != -1) {
-            Vector2 mPos = GetMousePosition();
-            DrawTextureEx(allAssets[draggedAssetIndex].preview, { mPos.x - 20, mPos.y - 20 }, 0, 1.0f, Fade(WHITE, 0.7f));
-
-            if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON)) {
-                // Drop logic will be handled in Engine::Update using this index
-                // We keep the index valid for one frame so Update() can see where it dropped
-            }
-        }
-
-        // Footer
-        DrawRectangle(0, currentSH - footerHeight, width, footerHeight, Fade(BLACK, 0.8f));
-        DrawText(TextFormat("Files: %d", (int)visibleIndices.size()), 10, (int)currentSH - 20, 10, DARKGRAY);
-    }
-
-    inline void DrawGrid(int size, Camera2D camera, int screenWidth, int screenHeight, Color color) {
-        // Find the top-left and bottom-right corners of the screen in World Space
-        Vector2 topLeft = GetScreenToWorld2D({ 0, 0 }, camera);
-        Vector2 bottomRight = GetScreenToWorld2D({ (float)screenWidth, (float)screenHeight }, camera);
-
-        // Calculate the starting line positions by snapping the corners to the grid size
-        float startX = floor(topLeft.x / size) * size;
-        float startY = floor(topLeft.y / size) * size;
-        float endX = ceil(bottomRight.x / size) * size;
-        float endY = ceil(bottomRight.y / size) * size;
-
-        // Draw Vertical Lines
-        for (float x = startX; x <= endX; x += size) {
-            DrawLineEx({ x, startY }, { x, endY }, 1.0f / camera.zoom, color);
-        }
-
-        // Draw Horizontal Lines
-        for (float y = startY; y <= endY; y += size) {
-            DrawLineEx({ startX, y }, { endX, y }, 1.0f / camera.zoom, color);
-        }
-    }
-
-    inline void DrawInspector(Entity e, Registry& reg, int screenWidth, int screenHeight) {
-        // Safety Check: -1 or anything beyond our max entities will crash the vector
-        if (e < 0 || e >= MAX_ENTITIES) return;
-
-        // Also check if the entity actually exists (has a mask)
-        if (reg.entityMasks[e].none()) return;
-
-        float width = 250;
-        float x = (float)screenWidth - width;
-        float padding = 10;
-        float controlHeight = 24;
-        float y = 40;
-
-        // Draw Panel Background
-        DrawRectangle(x, 0, width, (float)screenHeight, GetColor(GuiGetStyle(DEFAULT, BACKGROUND_COLOR)));
-        DrawLine(x, 0, x, screenHeight, DARKGRAY);
-
-        GuiLabel({ x + padding, 10, width, 30 }, TextFormat("INSPECTOR (Entity %i)", e));
-
-        //  Transform Component
-        if (reg.HasComponent(e, COMP_TRANSFORM)) {
-            auto& t = reg.transforms[e];
-
-            GuiGroupBox({ x + 5, y, width - 10, 110 }, "TRANSFORM");
-
-            // Position X Slider
-            GuiLabel({ x + padding, y + 20, 20, controlHeight }, "X");
-            t.position.x = GuiSliderBar({ x + 40, y + 20, width - 60, controlHeight }, NULL, TextFormat("%.2f", t.position.x), t.position.x, -2000, 2000);
-
-            // Position Y Slider
-            GuiLabel({ x + padding, y + 50, 20, controlHeight }, "Y");
-            t.position.y = GuiSliderBar({ x + 40, y + 50, width - 60, controlHeight }, NULL, TextFormat("%.2f", t.position.y), t.position.y, -2000, 2000);
-
-            // Scale Slider
-            GuiLabel({ x + padding, y + 80, 40, controlHeight }, "Scale");
-            t.scale.x = GuiSliderBar({ x + 50, y + 80, width - 70, controlHeight }, NULL, TextFormat("%.2f", t.scale.x), t.scale.x, 0.1f, 10.0f);
-            t.scale.y = t.scale.x; // Keep aspect ratio
-
-            y += 130;
-        }
-
-        // Sprite Component
-        if (reg.HasComponent(e, COMP_SPRITE)) {
-            auto& s = reg.sprites[e];
-            GuiGroupBox({ x + 5, y, width - 10, 60 }, "SPRITE TINT");
-
-            // Color is tricky with raygui sliders, let's use a label for now
-            // But we can add a button to reset the tint
-            if (GuiButton({ x + padding, y + 20, width - 30, controlHeight }, "Reset Tint to White")) {
-                s.tint = WHITE;
-            }
-
-            y += 80;
-        }
-
-        // Action Buttons
-        if (GuiButton({ x + 5, (float)screenHeight - 40, width - 10, 30 }, "DELETE ENTITY")) {
-            reg.entityMasks[e].reset();
-        }   
-    }
-    inline void DrawSettingsMenu(bool& open, int& activeTab, Registry& reg, Engine* engine);
-}
 
 namespace DebugSystem {
-    inline void Draw(const Registry& reg, const EngineStats& stats, int screenWidth) {
+    inline void Draw(const Registry& reg, DebugStats& stats, int screenWidth) {
         if (!stats.visible) return;
 
-        // Draw background panel
-        DrawRectangle(screenWidth - 210, 10, 200, 100, Fade(BLACK, 0.8f));
-        DrawRectangleLines(screenWidth - 210, 10, 200, 100, GRAY);
+        stats.UpdateHistory();
 
-        // Header
-        DrawText("ENGINE STATS", screenWidth - 200, 20, 10, GOLD);
+        float padding = 10.0f;
+        float panelWidth = 240.0f;
+        float panelHeight = 300.0f;
+        float x = (float)screenWidth - panelWidth - padding;
+        float y = padding;
 
-        // Data
+        // Background
+        DrawRectangleRec({ x, y, panelWidth, panelHeight }, Fade(BLACK, 0.9f));
+        DrawRectangleLinesEx({ x, y, panelWidth, panelHeight }, 1, DARKGRAY);
+
+        // Header & FPS
+        DrawText("ENGINE PROFILER", (int)x + 10, (int)y + 10, 10, GOLD);
         int fps = GetFPS();
         Color fpsColor = (fps > 55) ? GREEN : (fps > 30 ? YELLOW : RED);
+        DrawText(TextFormat("%i FPS", fps), (int)x + 10, (int)y + 25, 22, fpsColor);
+        DrawText(TextFormat("%.3f ms/frame", GetFrameTime() * 1000), (int)x + 10, (int)y + 50, 13, LIGHTGRAY);
 
-        DrawText(TextFormat("FPS: %i", fps), screenWidth - 200, 40, 16, fpsColor);
-        DrawText(TextFormat("Entities: %i", reg.GetAliveEntityCount()), screenWidth - 200, 65, 12, RAYWHITE);
-        DrawText(TextFormat("Frame Time: %.3fms", GetFrameTime() * 1000), screenWidth - 200, 80, 12, RAYWHITE);
+        // --- FPS GRAPH ---
+        float graphX = x + 10;
+        float graphY = y + 70;
+        float graphWidth = panelWidth - 20;
+        float graphHeight = 45;
+        DrawRectangle(graphX, graphY, graphWidth, graphHeight, Color{ 30, 30, 30, 255 });
+
+        for (int i = 0; i < 59; i++) {
+            int currIdx = (stats.historyIndex + i) % 60;
+            int nextIdx = (stats.historyIndex + i + 1) % 60;
+
+            float h1 = (stats.fpsHistory[currIdx] / 120.0f) * graphHeight;
+            float h2 = (stats.fpsHistory[nextIdx] / 120.0f) * graphHeight;
+
+            h1 = fminf(h1, graphHeight);
+            h2 = fminf(h2, graphHeight);
+
+            Vector2 p1 = { graphX + (i * (graphWidth / 60.0f)), graphY + graphHeight - h1 };
+            Vector2 p2 = { graphX + ((i + 1) * (graphWidth / 60.0f)), graphY + graphHeight - h2 };
+            DrawLineV(p1, p2, LIME);
+        }
+
+        // --- WORLD STATS ---
+        float statsY = graphY + graphHeight + 15;
+        DrawText("WORLD", (int)x + 10, (int)statsY, 10, GOLD);
+        DrawRectangle(x + 10, statsY + 12, panelWidth - 20, 1, DARKGRAY);
+        DrawText(TextFormat("Entities: %i", reg.GetAliveEntityCount()), (int)x + 10, (int)statsY + 18, 12, RAYWHITE);
+
+        // --- SYSTEM LOAD (Visual Bars) ---
+        float profilerY = statsY + 45;
+        DrawText("SYSTEM LOAD BREAKDOWN", (int)x + 10, (int)profilerY, 10, GOLD);
+
+        auto DrawMetric = [&](const char* label, float timeMs, Color color, int order) {
+            float barY = profilerY + 18 + (order * 22);
+            float totalFrameTime = GetFrameTime() * 1000.0f;
+            float percentage = (totalFrameTime > 0) ? (timeMs / totalFrameTime) : 0;
+
+            DrawText(label, (int)x + 10, (int)barY, 11, RAYWHITE);
+            // Bar Background
+            DrawRectangle(x + 85, barY, 110, 12, Color{ 50, 50, 50, 255 });
+            // Filled Bar
+            DrawRectangle(x + 85, barY, 110 * fminf(percentage, 1.0f), 12, color);
+            // Text Value
+            DrawText(TextFormat("%.1fms", timeMs), (int)x + 200, (int)barY, 10, LIGHTGRAY);
+            };
+
+        // These metrics will work once you wrap your Update calls with timers
+        DrawMetric("Core", stats.logicTime, BLUE, 0);
+        DrawMetric("Scripts", stats.scriptTime, PURPLE, 1);
+        DrawMetric("Render", stats.renderTime, ORANGE, 2);
+
+        DrawText("F1: Settings | F2: Debug", (int)x + 10, (int)y + panelHeight - 15, 10, GRAY);
     }
 }

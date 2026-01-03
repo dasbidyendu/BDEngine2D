@@ -1,0 +1,42 @@
+﻿  lapi.c
+  lauxlib.c
+  lbaselib.c
+  lcode.c
+  lcorolib.c
+  lctype.c
+  ldblib.c
+  ldebug.c
+  ldo.c
+  ldump.c
+  lfunc.c
+  lgc.c
+C:\dev\BDEngine\BDEngine\External\lua\lgc.c(384,21): warning C4334: '<<': result of 32-bit shift implicitly converted to 64 bits (was 64-bit shift intended?)
+C:\dev\BDEngine\BDEngine\External\lua\lgc.c(462,21): warning C4334: '<<': result of 32-bit shift implicitly converted to 64 bits (was 64-bit shift intended?)
+C:\dev\BDEngine\BDEngine\External\lua\lgc.c(667,19): warning C4334: '<<': result of 32-bit shift implicitly converted to 64 bits (was 64-bit shift intended?)
+C:\dev\BDEngine\BDEngine\External\lua\lgc.c(686,23): warning C4334: '<<': result of 32-bit shift implicitly converted to 64 bits (was 64-bit shift intended?)
+  linit.c
+  liolib.c
+  llex.c
+  lmathlib.c
+  lmem.c
+  loadlib.c
+  lobject.c
+  lopcodes.c
+  Generating Code...
+  Compiling...
+  loslib.c
+  lparser.c
+  lstate.c
+  lstring.c
+  lstrlib.c
+  ltable.c
+C:\dev\BDEngine\BDEngine\External\lua\ltable.c(329,5): warning C4334: '<<': result of 32-bit shift implicitly converted to 64 bits (was 64-bit shift intended?)
+  ltablib.c
+  ltm.c
+  lua.c
+  lundump.c
+  lutf8lib.c
+  lvm.c
+  lzio.c
+  Generating Code...
+  Lua.vcxproj -> C:\dev\BDEngine\BDEngine\Build\Lua\Debug\Lua.lib

@@ -1,88 +1,85 @@
 #pragma once
 #include "raylib.h"
 #include <string>
+#include <vector>
+#include <memory>
+#include "Profiler.h"
 #include "Managers/ResourceManager.h"
-#include "ECS/Registry.h"
 #include "ECS/Systems.h"
-#include <fstream>
-#include <sstream>
+#include "Managers/ScriptSystem.h"
+#include "raymath.h"
+#include "Utils/AssetEntry.h"
 
+
+class Editor;
 
 class Engine {
 public:
-	Engine(int width, int height, const std::string& title);
+    Engine(int width, int height, const std::string& title);
+    ~Engine();
 
-	~Engine();
+    void InitGame();
+    void Run();
+    void InitScripting();
 
-	void InitGame();
+    void ApplyTheme(const std::string& themeName);
+    void SaveConfig();
+    void LoadConfig();
+    void LoadEngineFont(const std::string& path);
 
-	void Run();
+    Camera2D& GetCamera() { return camera; }
 
-	void ApplyTheme(const std::string& themeName);
+    bool IsMouseOverUI = false;
+    bool isEditorMode = true;
+    bool showSettings = false;
 
-	void SaveConfig();
-	void LoadConfig();
-	void LoadEngineFont(const std::string& path);
+    std::unique_ptr<Editor> editor;
 
-	bool IsMouseOverUI = false;
+    std::vector<AssetEntry> editorAssets;
+    Entity selectedEntity = -1;
+    int selectedAssetIndex = -1;
+    int settingsActiveTab = 0;
 
-	std::vector<std::string> themeFiles;
-	std::vector<std::string> fontFiles;
+    ResourceManager assets;
+    std::unique_ptr<Registry> registry;
 
-	std::string lastFontPath = "assets/fonts/Mecha.ttf";
+    std::vector<std::string> themeFiles;
+    std::vector<std::string> fontFiles;
+    std::string lastFontPath = "assets/fonts/Mecha.ttf";
 
-	std::string currentBrowserPath = "assets";
-	int browserActiveTab = 0;
-	int draggedAssetIndex = -1;
+    std::unique_ptr<ScriptEngine> scriptEngine;
+    DebugStats stats;
+
 private:
-	void Update();
+    void Update();
+    void Render();
 
-	void Render();
+    int screenWidth;
+    int screenHeight;
+    const std::string windowTitle;
+    bool isRunning;
 
-	int screenWidth;
-	int screenHeight;
-	const std::string windowTitle;
-	bool isRunning;
-	int selectedAssetIndex = -1;
-	bool showGrid = true;
-	int gridSize = 32;
-	bool isEditorMode = true;
+    bool showGrid = true;
+    int gridSize = 32;
+    Color gridColor = { 200, 200, 200, 40 };
 
-	std::vector<AssetEntry> editorAssets;
+    Camera2D camera = { 0 };
+    float zoomSensitivity = 0.1f;
 
-	Color gridColor = { 200,200,200,40 };
+    struct EngineTheme {
+        std::string name;
+        Color background;
+        Color panelBG;
+        Color gridColor;
+        Color accentColor;
+        int fontSize;
+        unsigned int borderId;
+        unsigned int textId;
+    } currentTheme;
 
-	ResourceManager assets;
+    std::string lastThemePath = "assets/themes/dark-gold.txt";
+    void ScanThemes();
 
-	Registry registry;
-
-	EngineStats stats;
-
-	Camera2D camera = { 0 };
-	float zoomSensitivity = 0.1f;
-
-	Entity selectedEntity = -1;
-
-	struct EngineTheme {
-		std::string name;
-		Color background;
-		Color panelBG;
-		Color gridColor;
-		Color accentColor;
-		int fontSize;
-
-		unsigned int borderId;
-		unsigned int textId;
-	} currentTheme;
-
-	bool showSettings = false;
-	int settingsActiveTab = 0;
-
-	std::string lastThemePath = "assets/themes/dark-gold.txt";
-	void ScanThemes();
-
-	Font engineFont;
-	void ScanFonts();
+    Font engineFont;
+    void ScanFonts();
 };
-
-
