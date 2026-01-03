@@ -13,11 +13,11 @@ Engine::Engine(int width, int height, const std::string& title)
 
     SetConfigFlags(FLAG_WINDOW_RESIZABLE);
     InitWindow(screenWidth, screenHeight, windowTitle.c_str());
-    /*int monitor = GetCurrentMonitor();
+    int monitor = GetCurrentMonitor();
     if (!IsWindowFullscreen()) {
         SetWindowSize(GetMonitorWidth(monitor), GetMonitorHeight(monitor));
         ToggleFullscreen();
-    }*/
+    }
 
     SetTargetFPS(0);
     isRunning = true;
@@ -138,7 +138,7 @@ void Engine::InitGame() {
 }
 
 void Engine::Update() {
-    TraceLog(LOG_INFO, "ENGINE: Update Start");
+    //TraceLog(LOG_INFO, "ENGINE: Update Start");
     double startTime = GetTime();
     if (IsWindowResized() || IsWindowFullscreen()) {
         screenWidth = GetScreenWidth();
@@ -208,7 +208,7 @@ void Engine::Update() {
 }
 
 void Engine::Render() {
-    TraceLog(LOG_INFO, "ENGINE: Render Start");
+    //TraceLog(LOG_INFO, "ENGINE: Render Start");
     BeginDrawing();
     ClearBackground(currentTheme.background);
 

@@ -16,6 +16,7 @@ void Editor::Update() {
     bool mouseInInspector = (mousePos.x > (GetScreenWidth() - 250));
     bool mouseInUI = mouseInSidebar || mouseInInspector;
 
+    // 1. Handle World Dropping (Textures -> Entities)
     if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON) && draggedAssetIndex != -1) {
         if (!mouseInUI) {
             auto& asset = owner->editorAssets[draggedAssetIndex];
@@ -27,15 +28,17 @@ void Editor::Update() {
                 owner->registry->AddComponent(newEntity, TransformComponent{ snappedPos, {1,1}, 0.0f });
                 owner->registry->AddComponent(newEntity, SpriteComponent{ owner->assets.GetTexture(asset.name), WHITE });
             }
-            draggedAssetIndex = -1; // Reset only if dropped in world
+            draggedAssetIndex = -1;
         }
+        // If mouseInUI is true, we DON'T reset here. 
+        // We let the Render/Inspector logic handle the release.
     }
 
+    // 2. Safety Reset (Only if released outside UI or Right-Clicked)
     if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) draggedAssetIndex = -1;
+    if (!IsMouseButtonDown(MOUSE_LEFT_BUTTON) && !mouseInUI) draggedAssetIndex = -1;
 
-    // Safety reset: if button is up and we aren't in the middle of a frame's logic
-    if (!IsMouseButtonDown(MOUSE_LEFT_BUTTON) && !mouseInInspector) draggedAssetIndex = -1;
-
+    // 3. Entity Selection
     if (!mouseInUI && IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && draggedAssetIndex == -1) {
         Vector2 worldMouse = GetScreenToWorld2D(GetMousePosition(), owner->GetCamera());
         owner->selectedEntity = -1;
@@ -46,8 +49,7 @@ void Editor::Update() {
                 auto& s = owner->registry->sprites[i];
 
                 Rectangle bounds = {
-                    t.position.x,
-                    t.position.y,
+                    t.position.x, t.position.y,
                     (float)s.texture.width * t.scale.x,
                     (float)s.texture.height * t.scale.y
                 };
@@ -60,31 +62,26 @@ void Editor::Update() {
         }
     }
 
-    if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) draggedAssetIndex = -1;
+    // 4. Deletion
     if (owner->selectedEntity != -1 && IsKeyPressed(KEY_DELETE)) {
         owner->registry->entityMasks[owner->selectedEntity].reset();
         owner->selectedEntity = -1;
     }
 
+    // 5. Asset Browser Refresh Logic
     static float refreshTimer = 0;
     refreshTimer += GetFrameTime();
-
-    // Refresh every 2 seconds 
-    if (refreshTimer > 2.0f ) {
-        // Only scan if the path actually exists
+    if (refreshTimer > 2.0f) {
         if (fs::exists(currentBrowserPath)) {
-            // Check if directory modified time changed (optional optimization)
             owner->editorAssets = AssetScanner::Scan(currentBrowserPath);
         }
         refreshTimer = 0;
     }
 
     if (currentBrowserPath != lastPath) {
-        // Clear old previews to avoid GPU memory leaks
         for (auto& asset : owner->editorAssets) {
             if (asset.preview.id != 0) UnloadTexture(asset.preview);
         }
-
         owner->editorAssets = AssetScanner::Scan(currentBrowserPath);
         lastPath = currentBrowserPath;
     }
@@ -135,6 +132,7 @@ namespace EditorSystem {
         DrawLine(x, 0, x, screenHeight, DARKGRAY);
         GuiLabel({ x + padding, 10, width, 30 }, TextFormat("INSPECTOR (Entity %i)", e));
 
+        // --- TRANSFORM COMPONENT ---
         if (reg.HasComponent(e, COMP_TRANSFORM)) {
             auto& t = reg.transforms[e];
             GuiGroupBox({ x + 5, y, width - 10, 110 }, "TRANSFORM");
@@ -145,6 +143,7 @@ namespace EditorSystem {
             y += 130;
         }
 
+        // --- SPRITE COMPONENT ---
         if (reg.HasComponent(e, COMP_SPRITE)) {
             auto& s = reg.sprites[e];
             GuiGroupBox({ x + 5, y, width - 10, 60 }, "SPRITE");
@@ -152,46 +151,65 @@ namespace EditorSystem {
             y += 80;
         }
 
+        // --- SCRIPT COMPONENT ---
         if (reg.HasComponent(e, COMP_SCRIPT)) {
             auto& sc = reg.scripts[e];
             float scriptEntryHeight = 30.0f;
-            // We calculate a dynamic height for the box
             float boxHeight = 40.0f + (std::max((int)sc.scriptPaths.size(), 1) * scriptEntryHeight);
             Rectangle scriptBox = { x + 5, y, width - 10, boxHeight };
 
-            // ... (Your Hover/Drag logic) ...
+            bool isHovered = CheckCollisionPointRec(GetMousePosition(), scriptBox);
+            bool isDraggingScript = false;
+
+            if (engine->editor->draggedAssetIndex != -1) {
+                if (engine->editorAssets[engine->editor->draggedAssetIndex].path.find(".lua") != std::string::npos)
+                    isDraggingScript = true;
+            }
+
+            // Visual feedback for drag and drop
+            DrawRectangleRec(scriptBox, (isHovered && isDraggingScript) ? Fade(GOLD, 0.3f) : Fade(GRAY, 0.1f));
             GuiGroupBox(scriptBox, "SCRIPT COMPONENT (Multi)");
 
+            // 1. Drop Logic (The missing piece)
+            if (isHovered && isDraggingScript && IsMouseButtonReleased(MOUSE_LEFT_BUTTON)) {
+                std::string path = engine->editorAssets[engine->editor->draggedAssetIndex].path;
+                if (std::find(sc.scriptPaths.begin(), sc.scriptPaths.end(), path) == sc.scriptPaths.end()) {
+                    sc.scriptPaths.push_back(path);
+                    engine->scriptEngine->scriptCache.erase(path); // Refresh cache
+                }
+                engine->editor->draggedAssetIndex = -1;
+            }
+
+            // 2. Script List & Deletion Logic
             float currentScriptY = y + 25;
-            for (int i = 0; i < (int)sc.scriptPaths.size(); ) { // Note: i++ removed from here
+            for (int i = 0; i < (int)sc.scriptPaths.size(); ) {
                 Rectangle itemRect = { x + 10, currentScriptY, width - 50, 25 };
                 GuiLabel(itemRect, TextFormat("#%i: %s", i + 1, GetFileName(sc.scriptPaths[i].c_str())));
 
                 if (GuiButton({ x + width - 35, currentScriptY, 25, 25 }, "#113#")) {
-                    // This physically removes it from the Entity's vector
                     sc.scriptPaths.erase(sc.scriptPaths.begin() + i);
-                    // DO NOT increment 'i' here, the next element shifts into current 'i'
+                    // Don't increment i, next item slides into this index
                 }
                 else {
                     currentScriptY += scriptEntryHeight;
-                    i++; // Only increment if we didn't delete
+                    i++;
                 }
             }
 
             if (sc.scriptPaths.empty()) {
-                GuiLabel({ x + 15, currentScriptY, width - 30, 25 }, "EMPTY (DRAG SCRIPTS HERE)");
+                GuiLabel({ x + 15, y + 25, width - 30, 25 }, "EMPTY (DRAG SCRIPTS HERE)");
             }
 
-            // Update y for the next UI component
             y += boxHeight + 10;
         }
         else {
             if (GuiButton({ x + 5, y, width - 10, 30 }, "+ ADD SCRIPT COMPONENT")) {
-                reg.AddComponent(e, ScriptComponent{ {}, false});
+                reg.AddComponent(e, ScriptComponent{ {}, false });
             }
             y += 40;
         }
 
+        // --- GLOBAL DELETE BUTTON ---
         if (GuiButton({ x + 5, (float)screenHeight - 40, width - 10, 30 }, "DELETE ENTITY")) {
             reg.entityMasks[e].reset();
         }

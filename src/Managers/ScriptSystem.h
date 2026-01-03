@@ -28,7 +28,49 @@ public:
         lua["SetPos"] = [&reg](Entity e, float x, float y) {
             reg.transforms[e].position = { x, y };
             };
+        lua["GetRotation"] = [&reg](Entity e) {
+			auto& rot = reg.transforms[e].rotation;
+            return rot;
+            };
+        lua["SetRotation"] = [&reg](Entity e, float angle) {
+            reg.transforms[e].rotation = angle;
+            };
+        lua["SetScale"] = [&reg](Entity e, float s) {
+            reg.transforms[e].scale = { s, s };
+            };
         lua["IsKeyDown"] = [](int key) { return ::IsKeyDown(key); };
+
+        lua.new_usertype<TransformComponent>("Transform",
+            // Direct property access (Low-level)
+            "pos", &TransformComponent::position,
+            "scale", &TransformComponent::scale,
+            "rotation", &TransformComponent::rotation,
+
+            // Helper "virtual" properties
+            "x", sol::property(
+                [](TransformComponent& t) { return t.position.x; },
+                [](TransformComponent& t, float val) { t.position.x = val; }
+            ),
+            "y", sol::property(
+                [](TransformComponent& t) { return t.position.y; },
+                [](TransformComponent& t, float val) { t.position.y = val; }
+            )
+        );
+
+        // Register Raylib Vector2 so Lua understands .x and .y
+        lua.new_usertype<Vector2>("Vector2",
+            "x", &Vector2::x,
+            "y", &Vector2::y
+        );
+
+        // High-level Component Access
+        lua["GetTransform"] = [&reg](Entity e) -> TransformComponent& {
+            return reg.transforms[e];
+            };
+
+        // Utility / Math
+        lua["IsKeyDown"] = [](int key) { return ::IsKeyDown(key); };
+        lua["GetDeltaTime"] = []() { return ::GetFrameTime(); };
     }
 
     void Execute(Entity e, const std::string& path, float dt) {
