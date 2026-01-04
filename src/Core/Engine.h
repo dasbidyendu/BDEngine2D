@@ -32,6 +32,8 @@ public:
     bool IsMouseOverUI = false;
     bool isEditorMode = true;
     bool showSettings = false;
+    
+    int activeControlId = 0;
 
     std::unique_ptr<Editor> editor;
 

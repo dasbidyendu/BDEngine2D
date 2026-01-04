@@ -73,7 +73,7 @@ namespace UISystem {
             if (reg.HasComponent(i, COMP_UI)) {
                 auto& ui = reg.uiComponents[i];
 
-                // 1. Calculate Position based on Anchor
+                // Calculate Position based on Anchor
                 Vector2 finalPos = { 0, 0 };
                 switch (ui.anchor) {
                 case ANCHOR_TOP_LEFT:     finalPos = { ui.offset.x, ui.offset.y }; break;
@@ -83,7 +83,7 @@ namespace UISystem {
 
                 Rectangle rect = { finalPos.x, finalPos.y, ui.size.x, ui.size.y };
 
-                // 2. Collision Detection
+                // Collision Detection
                 bool isHovered = CheckCollisionPointRec(GetMousePosition(), rect);
 
                 if (isHovered) {

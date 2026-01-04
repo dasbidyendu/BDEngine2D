@@ -21,6 +21,8 @@ public:
 
     void Init(Registry& reg) {
         lua.open_libraries(sol::lib::base, sol::lib::math, sol::lib::string, sol::lib::package);
+
+        //Direct access methods
         lua["GetPos"] = [&reg](Entity e) {
             auto& pos = reg.transforms[e].position;
             return std::make_tuple(pos.x, pos.y);
@@ -38,46 +40,56 @@ public:
         lua["SetScale"] = [&reg](Entity e, float s) {
             reg.transforms[e].scale = { s, s };
             };
-        lua["IsKeyDown"] = [](int key) { return ::IsKeyDown(key); };
 
-        lua.new_usertype<TransformComponent>("Transform",
-            // Direct property access (Low-level)
-            "pos", &TransformComponent::position,
-            "scale", &TransformComponent::scale,
-            "rotation", &TransformComponent::rotation,
 
-            // Helper "virtual" properties
-            "x", sol::property(
-                [](TransformComponent& t) { return t.position.x; },
-                [](TransformComponent& t, float val) { t.position.x = val; }
-            ),
-            "y", sol::property(
-                [](TransformComponent& t) { return t.position.y; },
-                [](TransformComponent& t, float val) { t.position.y = val; }
-            )
-        );
-
-        // Register Raylib Vector2 so Lua understands .x and .y
+        // Register Raylib Vector2
         lua.new_usertype<Vector2>("Vector2",
             "x", &Vector2::x,
             "y", &Vector2::y
         );
 
+        lua.new_usertype<TransformComponent>("Transform",
+            // Position Methods
+            "GetPosition", [](TransformComponent& t) { return t.position; },
+            "SetPosition", [](TransformComponent& t, float x, float y) { t.position = { x, y }; },
+            "Translate", [](TransformComponent& t, float dx, float dy) { t.position.x += dx; t.position.y += dy; },
+
+            // Scale Methods
+            "GetScale", [](TransformComponent& t) { return t.scale; },
+            "SetScale", [](TransformComponent& t, float s) { t.scale = { s, s }; },
+            "SetScaleEx", [](TransformComponent& t, float sx, float sy) { t.scale = { sx, sy }; },
+
+            // Rotation
+            "GetRotation", [](TransformComponent& t) { return t.rotation; },
+            "SetRotation", [](TransformComponent& t, float rot) { t.rotation = rot; }
+        );
+
         // High-level Component Access
-        lua["GetTransform"] = [&reg](Entity e) -> TransformComponent& {
-            return reg.transforms[e];
+        lua["GetTransform"] = [&reg](Entity e) -> TransformComponent* {
+            if (e >= 0 && e < MAX_ENTITIES && reg.HasComponent(e, COMP_TRANSFORM)) {
+                return &reg.transforms[e];
+            }
+
+            TraceLog(LOG_WARNING, "LUA: Entity %d does not have a TransformComponent!", e);
+            return nullptr;
+            };
+        lua["HasTransform"] = [&reg](Entity e) {
+            return reg.HasComponent(e, COMP_TRANSFORM);
             };
 
         // Utility / Math
         lua["IsKeyDown"] = [](int key) { return ::IsKeyDown(key); };
         lua["GetDeltaTime"] = []() { return ::GetFrameTime(); };
+
+        lua["KEY_W"] = 87; lua["KEY_A"] = 65; lua["KEY_S"] = 83; lua["KEY_D"] = 68;
+        lua["KEY_RIGHT"] = 262; lua["KEY_LEFT"] = 263; lua["KEY_UP"] = 265; lua["KEY_DOWN"] = 264;
+        lua["KEY_SPACE"] = 32;
     }
 
     void Execute(Entity e, const std::string& path, float dt) {
         if (path.empty()) return;
 
         if (scriptCache.find(path) == scriptCache.end()) {
-            // Correct way to set environment in sol3
             sol::environment env(lua, sol::create, lua.globals());
 
             auto load_result = lua.load_file(path);
@@ -85,7 +97,6 @@ public:
 
             sol::protected_function scriptFunc = load_result;
 
-            // Set environment on the function itself
             env.set_on(scriptFunc);
 
             auto result = scriptFunc();

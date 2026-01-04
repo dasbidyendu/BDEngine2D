@@ -22,7 +22,7 @@ Engine::Engine(int width, int height, const std::string& title)
     SetTargetFPS(0);
     isRunning = true;
 
-    TraceLog(LOG_INFO, "STEP 1: Window Ready");
+    TraceLog(LOG_INFO, "Window Ready");
     LoadConfig();
 
     camera.target = { 0.0f, 0.0f };
@@ -138,8 +138,9 @@ void Engine::InitGame() {
 }
 
 void Engine::Update() {
-    //TraceLog(LOG_INFO, "ENGINE: Update Start");
     double startTime = GetTime();
+
+    // DYNAMIC RESOLUTION UPDATE
     if (IsWindowResized() || IsWindowFullscreen()) {
         screenWidth = GetScreenWidth();
         screenHeight = GetScreenHeight();
@@ -147,10 +148,20 @@ void Engine::Update() {
 
     stats.frameCount++;
 
+    // INPUT FOCUS KILL-SWITCH
+    if (activeControlId != 0) {
+        if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_ESCAPE)) {
+            activeControlId = 0;
+        }
+    }
+
+    // GLOBAL OVERLAY TOGGLES
     if (IsKeyPressed(KEY_F1)) showSettings = !showSettings;
     if (IsKeyPressed(KEY_TAB)) isEditorMode = !isEditorMode;
     if (IsKeyPressed(KEY_F11) || (IsKeyDown(KEY_LEFT_ALT) && IsKeyPressed(KEY_ENTER))) ToggleFullscreen();
     if (IsKeyPressed(KEY_F2)) stats.Toggle();
+
+    // V-Sync Toggle
     if (IsKeyPressed(KEY_F3)) {
         if (IsWindowState(FLAG_VSYNC_HINT)) {
             ClearWindowState(FLAG_VSYNC_HINT);
@@ -161,16 +172,24 @@ void Engine::Update() {
         }
     }
 
+    //MAIN LOGIC
     if (!showSettings) {
         if (isEditorMode) {
             editor->Update();
 
-            if (GetMousePosition().x > 250 && GetMousePosition().x < (screenWidth - 250)) {
+            
+            bool isTyping = (activeControlId != 0);
+
+            if (!isTyping && GetMousePosition().x > 250 && GetMousePosition().x < (screenWidth - 300)) {
+
+                // Right-Click Pan
                 if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) {
                     Vector2 delta = GetMouseDelta();
                     camera.target.x -= delta.x / camera.zoom;
                     camera.target.y -= delta.y / camera.zoom;
                 }
+
+                // Zoom Logic (Centered on Mouse)
                 float wheel = GetMouseWheelMove();
                 if (wheel != 0) {
                     Vector2 mouseWorldPos = GetScreenToWorld2D(GetMousePosition(), camera);
@@ -182,14 +201,14 @@ void Engine::Update() {
             }
         }
         else {
+            // PLAY MODE LOGIC
             InputSystem::Update(*registry);
             ControlSystem::Update(*registry);
 
             float dt = GetFrameTime();
             MovementSystem::Update(*registry, dt);
 
-            if (!isEditorMode && scriptEngine) { // Play Mode
-                float dt = GetFrameTime();
+            if (scriptEngine) {
                 for (Entity i = 0; i < MAX_ENTITIES; i++) {
                     if (registry->HasComponent(i, COMP_SCRIPT)) {
                         auto& script = registry->scripts[i];
@@ -203,6 +222,7 @@ void Engine::Update() {
             }
         }
     }
+
     double endTime = GetTime();
     stats.logicTime = (float)(endTime - startTime) * 1000.0f;
 }
