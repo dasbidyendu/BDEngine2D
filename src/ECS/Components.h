@@ -13,8 +13,11 @@ struct TransformComponent {
 };
 
 struct SpriteComponent {
+	std::string texturePath;
     Texture2D texture;
-    Color tint;
+    Color tint = WHITE;
+    Vector2 anchor = { 0.0f, 0.0f };
+    bool flipX = false;
 };
 
 struct VelocityComponent {
@@ -34,11 +37,17 @@ struct ScriptComponent {
 enum UIAnchor { ANCHOR_TOP_LEFT, ANCHOR_TOP_RIGHT, ANCHOR_CENTER, ANCHOR_BOTTOM_LEFT };
 
 struct UIComponent {
-    std::string text;
-    UIAnchor anchor;
-    Vector2 offset;
-    Vector2 size;
-    Color color;
-    bool isPressed;
+    std::string text = "Button";
+    UIAnchor anchor = ANCHOR_TOP_LEFT;
+    Vector2 offset = { 100, 100 };
+    Vector2 size = { 150, 40 };
+    Color color = DARKGRAY;
+    int fontSize = 20; // Added this for better text control
+
+    // Editor State (Not saved, used for dragging)
+    bool isDragging = false;
+
+    // Runtime Logic
+    bool isPressed = false;
     std::function<void()> onClick;
 };

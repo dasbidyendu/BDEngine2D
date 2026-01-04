@@ -3,6 +3,7 @@
 #include "ECS/Registry.h"
 #include "Managers/ResourceManager.h"
 #include "Utils/AssetEntry.h"
+#include "ECS/UISystem.h"
 #include "raygui.h"
 #include "raymath.h"
 #include <algorithm>
@@ -13,10 +14,50 @@ namespace fs = std::filesystem;
 void Editor::Update() {
     Vector2 mousePos = GetMousePosition();
     bool mouseInSidebar = (mousePos.x < 250);
-    bool mouseInInspector = (mousePos.x > (GetScreenWidth() - 250));
+    bool mouseInInspector = (mousePos.x > (GetScreenWidth() - 300));
     bool mouseInUI = mouseInSidebar || mouseInInspector;
 
-    // Handle World Dropping (Textures -> Entities)
+    // --- 1. UI ELEMENT SELECTION & DRAGGING (Highest Priority) ---
+    static bool isDraggingUI = false;
+
+    // If we are already dragging, keep dragging regardless of mouse position
+    if (isDraggingUI && owner->selectedEntity != -1 && owner->registry->HasComponent(owner->selectedEntity, COMP_UI)) {
+        if (IsMouseButtonUp(MOUSE_LEFT_BUTTON)) {
+            isDraggingUI = false;
+        }
+        else {
+            // Move UI
+            auto& ui = owner->registry->uiComponents[owner->selectedEntity];
+            Vector2 delta = GetMouseDelta();
+            ui.offset = Vector2Add(ui.offset, delta);
+            return; // Consume input
+        }
+    }
+
+    // Try to select a UI Element
+    if (!mouseInUI && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+        bool uiClicked = false;
+
+        // Iterate BACKWARDS to click the "top-most" UI element first
+        for (int i = MAX_ENTITIES - 1; i >= 0; i--) {
+            if (owner->registry->HasComponent(i, COMP_UI)) {
+                auto& ui = owner->registry->uiComponents[i];
+                Rectangle rect = UISystem::GetRect(ui);
+
+                if (CheckCollisionPointRec(mousePos, rect)) {
+                    owner->selectedEntity = i;
+                    isDraggingUI = true;
+                    uiClicked = true;
+                    break;
+                }
+            }
+        }
+
+        // If we clicked UI, stop here. Don't select World entities.
+        if (uiClicked) return;
+    }
+
+    // --- 2. ASSET DROPPING (Textures -> World Entities) ---
     if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON) && draggedAssetIndex != -1) {
         if (!mouseInUI) {
             auto& asset = owner->editorAssets[draggedAssetIndex];
@@ -25,34 +66,29 @@ void Editor::Update() {
                 Vector2 snappedPos = { floor(worldMouse.x / 32) * 32, floor(worldMouse.y / 32) * 32 };
 
                 Entity newEntity = owner->registry->CreateEntity();
-                owner->registry->AddComponent(newEntity, TransformComponent{ snappedPos, {1,1}, 0.0f });
-                owner->registry->AddComponent(newEntity, SpriteComponent{ owner->assets.GetTexture(asset.name), WHITE });
+                owner->registry->AddComponent(newEntity, TransformComponent{ snappedPos, {1.0f, 1.0f}, 0.0f });
+                owner->registry->AddComponent(newEntity, SpriteComponent{ asset.name, owner->assets.GetTexture(asset.name), WHITE, {0.5f, 0.5f}, false });
             }
             draggedAssetIndex = -1;
         }
-        // If mouseInUI is true, we DON'T reset here. 
-        // We let the Render/Inspector logic handle the release.
     }
 
-    // Safety Reset (Only if released outside UI or Right-Clicked)
+    // Cancel drag if right click
     if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) draggedAssetIndex = -1;
-    if (!IsMouseButtonDown(MOUSE_LEFT_BUTTON) && !mouseInUI) draggedAssetIndex = -1;
 
-    // Entity Selection
-    if (!mouseInUI && IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && draggedAssetIndex == -1) {
+    // --- 3. WORLD ENTITY SELECTION (Lowest Priority) ---
+    if (!mouseInUI && IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && draggedAssetIndex == -1 && !isDraggingUI) {
         Vector2 worldMouse = GetScreenToWorld2D(GetMousePosition(), owner->GetCamera());
-        owner->selectedEntity = -1;
+        owner->selectedEntity = -1; // Deselect previous
 
         for (Entity i = 0; i < MAX_ENTITIES; i++) {
             if (owner->registry->HasComponent(i, COMP_TRANSFORM) && owner->registry->HasComponent(i, COMP_SPRITE)) {
                 auto& t = owner->registry->transforms[i];
                 auto& s = owner->registry->sprites[i];
-
-                Rectangle bounds = {
-                    t.position.x, t.position.y,
-                    (float)s.texture.width * t.scale.x,
-                    (float)s.texture.height * t.scale.y
-                };
+                // Simple bounds check (improved slightly)
+                Rectangle bounds = { t.position.x - (s.texture.width * t.scale.x * s.anchor.x),
+                                     t.position.y - (s.texture.height * t.scale.y * s.anchor.y),
+                                     (float)s.texture.width * t.scale.x, (float)s.texture.height * t.scale.y };
 
                 if (CheckCollisionPointRec(worldMouse, bounds)) {
                     owner->selectedEntity = i;
@@ -99,6 +135,18 @@ void Editor::Render() {
         }
     }
 
+    if (owner->selectedEntity != -1 && owner->registry->HasComponent(owner->selectedEntity, COMP_UI)) {
+        auto& ui = owner->registry->uiComponents[owner->selectedEntity];
+        Rectangle r = UISystem::GetRect(ui);
+
+        // Draw outer glow/outline for selection
+        DrawRectangleLinesEx(r, 2, YELLOW);
+        DrawCircle((int)r.x, (int)r.y, 4, YELLOW); // Show origin point
+
+        // Draw Anchor info text
+        DrawText("Selected UI", (int)r.x, (int)r.y - 20, 10, YELLOW);
+    }
+
     if (draggedAssetIndex != -1) {
         Vector2 mPos = GetMousePosition();
         auto& asset = owner->editorAssets[draggedAssetIndex];
@@ -120,6 +168,48 @@ void Editor::Render() {
 }
 
 namespace EditorSystem {
+
+    void DrawUIInspector(Entity e, Registry& reg, float xPos, float& currentY, float panelWidth) {
+        auto& ui = reg.uiComponents[e];
+
+        GuiGroupBox({ xPos + 5, currentY, panelWidth - 10, 200 }, "UI COMPONENT");
+
+        // 1. Text Content
+        GuiLabel({ xPos + 15, currentY + 20, 60, 24 }, "Text");
+
+        // Note: Raygui GuiTextBox requires a char buffer. 
+        // We copy string to buffer, edit, then copy back.
+        static char textBuffer[128] = { 0 };
+        static int lastEntity = -1;
+        if (lastEntity != (int)e) { strcpy(textBuffer, ui.text.c_str()); lastEntity = e; }
+
+        if (GuiTextBox({ xPos + 60, currentY + 20, panelWidth - 80, 24 }, textBuffer, 128, true)) {
+            ui.text = std::string(textBuffer);
+        }
+
+        // 2. Size
+        GuiLabel({ xPos + 15, currentY + 50, 60, 24 }, "Size");
+        int w = (int)ui.size.x; int h = (int)ui.size.y;
+        if (GuiValueBox({ xPos + 60, currentY + 50, 80, 24 }, "W", &w, 0, 2000, true)) ui.size.x = (float)w;
+        if (GuiValueBox({ xPos + 160, currentY + 50, 80, 24 }, "H", &h, 0, 2000, true)) ui.size.y = (float)h;
+
+        // 3. Anchor Buttons
+        GuiLabel({ xPos + 15, currentY + 85, 60, 24 }, "Anchor");
+        const char* anchors[] = { "TL", "TR", "C", "BL" };
+        int activeAnchor = (int)ui.anchor;
+        if (GuiToggleGroup({ xPos + 60, currentY + 85, 40, 24 }, "TL;TR;C;BL", activeAnchor)) {
+            ui.anchor = (UIAnchor)activeAnchor;
+        }
+
+        // 4. Color
+        GuiLabel({ xPos + 15, currentY + 120, 60, 24 }, "Color");
+        DrawRectangleRec({ xPos + 60, currentY + 120, 40, 24 }, ui.color);
+        if (GuiButton({ xPos + 110, currentY + 120, 100, 24 }, "Set Red")) ui.color = RED;
+        // (We can connect the full color picker here later)
+
+        currentY += 210;
+    }
+
     void DrawInspector(Entity e, Registry& reg, int screenWidth, int screenHeight, Engine* engine) {
         if (e < 0 || e >= MAX_ENTITIES || reg.entityMasks[e].none()) return;
 
@@ -186,10 +276,8 @@ namespace EditorSystem {
 
         // SPRITE COMPONENT 
         if (reg.HasComponent(e, COMP_SPRITE)) {
-            auto& s = reg.sprites[e];
-            GuiGroupBox({ xPos + 5, currentY, panelWidth - 10, 60 }, "SPRITE");
-            if (GuiButton({ xPos + padding, currentY + 20, panelWidth - 30, controlHeight }, "Reset Tint")) s.tint = WHITE;
-            currentY += 80;
+            
+            DrawSpriteEditor(e, reg, xPos, currentY, panelWidth, engine);
         }
 
         // SCRIPT COMPONENT 
@@ -250,7 +338,11 @@ namespace EditorSystem {
             currentY += 40;
         }
 
-        // GLOBAL DELETE BUTTON (Pinned to bottom)
+        if (reg.HasComponent(e, COMP_UI)) {
+            DrawUIInspector(e, reg, xPos, currentY, panelWidth);
+        }
+
+        // GLOBAL DELETE BUTTON
         if (GuiButton({ xPos + 5, (float)screenHeight - 40, panelWidth - 10, 30 }, "#158# DELETE ENTITY")) {
             reg.entityMasks[e].reset();
         }
@@ -336,5 +428,67 @@ namespace EditorSystem {
 
         for (float x = startX; x <= endX; x += size) DrawLineEx({ x, startY }, { x, endY }, 1.0f / camera.zoom, color);
         for (float y = startY; y <= endY; y += size) DrawLineEx({ startX, y }, { endX, y }, 1.0f / camera.zoom, color);
+    }
+
+    void EditorSystem::DrawSpriteEditor(Entity e, Registry& reg, float xPos, float& currentY, float panelWidth, Engine* engine) {
+        auto& s = reg.sprites[e];
+        auto& t = reg.transforms[e];
+        float padding = 10.0f;
+        float controlHeight = 24.0f;
+
+        // We increase the GroupBox height to accommodate the color section
+        static bool colorPickerActive = false;
+        float boxHeight = colorPickerActive ? 360.0f : 210.0f;
+        GuiGroupBox({ xPos + 5, currentY, panelWidth - 10, boxHeight }, "SPRITE PROPERTIES");
+
+        // Texture Info & Size 
+        GuiLabel({ xPos + 15, currentY + 20, panelWidth - 30, 20 }, TextFormat("Res: %ix%i", s.texture.width, s.texture.height));
+
+        int width = (int)(s.texture.width * t.scale.x);
+        int height = (int)(s.texture.height * t.scale.y);
+        GuiLabel({ xPos + 15, currentY + 45, 60, controlHeight }, "Size");
+        if (GuiValueBox({ xPos + 75, currentY + 45, 80, controlHeight }, "W", &width, 1, 4096, (engine->activeControlId == 10))) engine->activeControlId = (engine->activeControlId == 10) ? 0 : 10;
+        if (GuiValueBox({ xPos + 165, currentY + 45, 80, controlHeight }, "H", &height, 1, 4096, (engine->activeControlId == 11))) engine->activeControlId = (engine->activeControlId == 11) ? 0 : 11;
+        t.scale.x = (float)width / s.texture.width;
+        t.scale.y = (float)height / s.texture.height;
+
+        // Anchor Selector
+        GuiLabel({ xPos + 15, currentY + 80, 60, controlHeight }, "Anchor");
+        float anchorBoxSize = 20.0f;
+        for (int row = 0; row < 3; row++) {
+            for (int col = 0; col < 3; col++) {
+                Rectangle b = { xPos + 75 + (col * 22), currentY + 80 + (row * 22), anchorBoxSize, anchorBoxSize };
+                bool isActive = (abs(s.anchor.x - (col * 0.5f)) < 0.1f && abs(s.anchor.y - (row * 0.5f)) < 0.1f);
+                if (GuiButton(b, isActive ? "#111#" : "")) {
+                    s.anchor.x = col * 0.5f;
+                    s.anchor.y = row * 0.5f;
+                }
+            }
+        }
+
+        // TINT COLOR PICKER
+        GuiLabel({ xPos + 15, currentY + 150, 60, controlHeight }, "Tint");
+
+        // Draw a small preview rectangle of the current color
+        DrawRectangleRec({ xPos + 75, currentY + 150, 24, 24 }, s.tint);
+        DrawRectangleLinesEx({ xPos + 75, currentY + 150, 24, 24 }, 1, LIGHTGRAY);
+
+        if (GuiButton({ xPos + 105, currentY + 150, panelWidth - 120, 24 }, colorPickerActive ? "Close Picker" : "Edit Color")) {
+            colorPickerActive = !colorPickerActive;
+        }
+
+        if (colorPickerActive) {
+            s.tint = GuiColorPicker({ xPos + 75, currentY + 180, 150, 150 }, "Tint Color", s.tint);
+        }
+
+        // --- 4. Flip Toggle (Adjusted Y position) ---
+        float footerY = currentY + (colorPickerActive ? 330 : 180);
+        if (GuiButton({ xPos + 15, footerY, (panelWidth - 30) / 2, 25 }, s.flipX ? "Flipped X" : "Normal X")) s.flipX = !s.flipX;
+        if (GuiButton({ xPos + 15 + (panelWidth - 30) / 2 + 5, footerY, (panelWidth - 30) / 2 - 5, 25 }, "Reset")) {
+            s.tint = WHITE;
+            s.flipX = false;
+        }
+
+        currentY += boxHeight + 10;
     }
 }

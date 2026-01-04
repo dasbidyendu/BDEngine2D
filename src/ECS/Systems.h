@@ -24,7 +24,28 @@ namespace RenderSystem {
             if (reg.HasComponent(i, COMP_TRANSFORM) && reg.HasComponent(i, COMP_SPRITE)) {
                 auto& t = reg.transforms[i];
                 auto& s = reg.sprites[i];
-                DrawTextureEx(s.texture, t.position, t.rotation, t.scale.x, s.tint);
+
+                // Define source area (Handling Flips)
+                Rectangle sourceRec = {
+                    0.0f, 0.0f,
+                    (float)s.texture.width * (s.flipX ? -1.0f : 1.0f),
+                    (float)s.texture.height
+                };
+
+                // Define destination area (Position and Scale)
+                Rectangle destRec = {
+                    t.position.x, t.position.y,
+                    (float)s.texture.width * t.scale.x,
+                    (float)s.texture.height * t.scale.y
+                };
+
+                // We multiply the normalized anchor (0-1) by the scaled dimensions
+                Vector2 origin = {
+                    s.anchor.x * destRec.width,
+                    s.anchor.y * destRec.height
+                };
+
+                DrawTexturePro(s.texture, sourceRec, destRec, origin, t.rotation, s.tint);
             }
         }
     }

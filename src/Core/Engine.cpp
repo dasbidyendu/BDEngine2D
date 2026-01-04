@@ -4,6 +4,7 @@
 #include "Editor.h"
 #include <fstream>
 #include <sstream>
+#include "Managers/SceneManager.h"
 
 #define RAYGUI_IMPLEMENTATION
 #include "raygui.h"
@@ -116,16 +117,8 @@ void Engine::Run() {
 void Engine::InitGame() {
     Entity player = registry->CreateEntity();
 
-    Entity quitBtn = registry->CreateEntity();
-    registry->AddComponent(quitBtn, UIComponent{
-        "QUIT",
-        ANCHOR_TOP_RIGHT,
-        {5, 5},
-        {80, 40},
-        RED,
-        false,
-        [this]() { this->isRunning = false; }
-        });
+    Entity btn = registry->CreateEntity();
+    registry->AddComponent(btn, UIComponent{ "Start Game", ANCHOR_CENTER, {600,10}, {200, 50}, DARKBLUE });
 
     editorAssets = AssetScanner::Scan("assets");
     ScanThemes();
@@ -135,6 +128,8 @@ void Engine::InitGame() {
             assets.LoadTextureAsset(asset.name, asset.path);
         }
     }
+
+    SceneManager::LoadScene("assets/scenes/main.scene", *registry, this);
 }
 
 void Engine::Update() {
@@ -147,6 +142,11 @@ void Engine::Update() {
     }
 
     stats.frameCount++;
+
+    if (IsKeyDown(KEY_LEFT_CONTROL) && IsKeyPressed(KEY_S)) {
+        SceneManager::SaveScene("assets/scenes/main.scene", *registry);
+        TraceLog(LOG_INFO, "SYSTEM: Scene saved to assets/scenes/main.scene");
+    }
 
     // INPUT FOCUS KILL-SWITCH
     if (activeControlId != 0) {

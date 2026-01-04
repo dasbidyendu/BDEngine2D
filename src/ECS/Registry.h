@@ -62,6 +62,18 @@ public:
         return (int)nextEntity;
     }
     
+    void Clear() {
+        for (int i = 0; i < MAX_ENTITIES; i++) {
+            entityMasks[i].reset();
+        }
+        nextEntity = 0;
+    }
+
+    void SetNextEntity(Entity val) {
+        nextEntity = val;
+    }
+
+
     std::vector<TransformComponent> transforms;
     std::vector<SpriteComponent> sprites;
     std::vector<VelocityComponent> velocities;
