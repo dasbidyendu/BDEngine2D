@@ -40,7 +40,7 @@ Engine::Engine(int width, int height, const std::string& title)
         scriptEngine = std::make_unique<ScriptEngine>();
         // Only init if pointer is valid
         if (scriptEngine) {
-            scriptEngine->Init(*registry);
+            scriptEngine->Init(*registry,&camera);
             TraceLog(LOG_INFO, "SYSTEM: Script Engine Ready.");
         }
     }
@@ -115,10 +115,11 @@ void Engine::Run() {
 }
 
 void Engine::InitGame() {
-    Entity player = registry->CreateEntity();
+    Entity chessManager = registry->CreateEntity();
 
-    Entity btn = registry->CreateEntity();
-    registry->AddComponent(btn, UIComponent{ "Start Game", ANCHOR_CENTER, {600,10}, {200, 50}, DARKBLUE });
+	ScriptComponent sc;
+	sc.scriptPaths.push_back("assets/scripts/chess.lua");
+	registry->AddComponent(chessManager, sc);
 
     editorAssets = AssetScanner::Scan("assets");
     ScanThemes();
@@ -248,7 +249,7 @@ void Engine::Render() {
     RenderSystem::Draw(*registry);
     EndMode2D();
 
-    UISystem::UpdateAndDraw(*registry);
+    UISystem::Draw(*registry);
 
     if (isEditorMode) {
         editor->Render();

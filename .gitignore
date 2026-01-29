@@ -45,3 +45,4 @@
 *.vcxproj
 *.filters
 *.user
+/assets

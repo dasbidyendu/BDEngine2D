@@ -35,22 +35,38 @@ namespace UISystem {
         };
     }
 
+    // In ECS/UISystem.h
     inline void Draw(Registry& reg) {
         for (Entity i = 0; i < MAX_ENTITIES; i++) {
-            if (reg.HasComponent(i, COMP_UI)) {
-                auto& ui = reg.uiComponents[i];
-                Rectangle r = GetRect(ui);
+            if (!reg.HasComponent(i, COMP_UI)) continue;
 
-                // Draw Panel
+            auto& ui = reg.uiComponents[i];
+            Rectangle r = GetRect(ui);
+
+            switch (ui.type) {
+            case UI_PANEL:
                 DrawRectangleRec(r, ui.color);
-                DrawRectangleLinesEx(r, 2, Fade(BLACK, 0.3f));
-
-                // Draw Text (Centered)
-                int textW = MeasureText(ui.text.c_str(), ui.fontSize);
-                DrawText(ui.text.c_str(),
-                    (int)(r.x + (r.width / 2) - (textW / 2)),
-                    (int)(r.y + (r.height / 2) - (ui.fontSize / 2)),
-                    ui.fontSize, WHITE);
+                DrawRectangleLinesEx(r, 1, Fade(BLACK, 0.5f));
+                break;
+            case UI_BUTTON:
+                DrawRectangleRec(r, ui.color);
+                DrawRectangleLinesEx(r, 2, WHITE);
+                DrawText(ui.text.c_str(), r.x + 10, r.y + (r.height / 2 - ui.fontSize / 2), ui.fontSize, WHITE);
+                break;
+            case UI_LABEL:
+                DrawText(ui.text.c_str(), r.x, r.y, ui.fontSize, ui.color);
+                break;
+            case UI_IMAGE:
+                if (ui.texture.id != 0) {
+                    DrawTexturePro(ui.texture,
+                        { 0, 0, (float)ui.texture.width, (float)ui.texture.height },
+                        r, { 0,0 }, 0, ui.color);
+                }
+                else {
+                    DrawRectangleLinesEx(r, 1, RED);
+                    DrawText("MISSING IMG", r.x + 5, r.y + 5, 10, RED);
+                }
+                break;
             }
         }
     }

@@ -14,11 +14,21 @@ public:
 
     void Update();
     void Render();
+    void DrawTopBar();
+    void DrawUIPalette();
+    void DrawUIViewport();
 
     std::string currentBrowserPath = "assets";
     std::string lastPath = "";
     int browserActiveTab = 0;
     int draggedAssetIndex = -1;
+
+    enum EditorMode {
+        MODE_WORLD,
+        MODE_UI_EDITOR
+	} currentMode = MODE_WORLD;
+
+    Entity activeCanvasId = -1;
 
 private:
     Engine* owner;
@@ -30,4 +40,5 @@ namespace EditorSystem {
     void DrawGrid(int gridSize, Camera2D camera, int screenWidth, int screenHeight, Color color);
     void DrawAssetBrowser(std::vector<AssetEntry>& assets, std::string& currentPath, int& draggedIndex);
     void DrawSpriteEditor(Entity e, Registry& reg, float xPos, float& currentY, float panelWidth, Engine* engine);
+    void DrawUIInspector(Entity e, Registry& reg, float xPos, float& currentY, float panelWidth, Engine* engine);
 }

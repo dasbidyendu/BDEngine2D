@@ -85,48 +85,48 @@ namespace ControlSystem {
     }
 }
 
-namespace UISystem {
-    inline void UpdateAndDraw(Registry& reg) {
-        float sw = (float)GetScreenWidth();
-        float sh = (float)GetScreenHeight();
-
-        for (Entity i = 0; i < MAX_ENTITIES; i++) {
-            if (reg.HasComponent(i, COMP_UI)) {
-                auto& ui = reg.uiComponents[i];
-
-                // Calculate Position based on Anchor
-                Vector2 finalPos = { 0, 0 };
-                switch (ui.anchor) {
-                case ANCHOR_TOP_LEFT:     finalPos = { ui.offset.x, ui.offset.y }; break;
-                case ANCHOR_TOP_RIGHT:    finalPos = { sw - ui.size.x - ui.offset.x, ui.offset.y }; break;
-                    // TODO - other anchors
-                }
-
-                Rectangle rect = { finalPos.x, finalPos.y, ui.size.x, ui.size.y };
-
-                // Collision Detection
-                bool isHovered = CheckCollisionPointRec(GetMousePosition(), rect);
-
-                if (isHovered) {
-                    // Only trigger if hovered AND clicked
-                    if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-                        ui.isPressed = true;
-                        if (ui.onClick) {
-                            ui.onClick(); // This will now only fire if the mouse is on the button
-                        }
-                    }
-                    DrawRectangleRec(rect, ColorBrightness(ui.color, -0.2f)); // Hover visual
-                }
-                else {
-                    ui.isPressed = false;
-                    DrawRectangleRec(rect, ui.color);
-                }
-
-                DrawText(ui.text.c_str(), (int)finalPos.x + 5, (int)finalPos.y + 5, 20, WHITE);
-            }
-        }
-    }
-}
+//namespace UISystem {
+//    inline void UpdateAndDraw(Registry& reg) {
+//        float sw = (float)GetScreenWidth();
+//        float sh = (float)GetScreenHeight();
+//
+//        for (Entity i = 0; i < MAX_ENTITIES; i++) {
+//            if (reg.HasComponent(i, COMP_UI)) {
+//                auto& ui = reg.uiComponents[i];
+//
+//                // Calculate Position based on Anchor
+//                Vector2 finalPos = { 0, 0 };
+//                switch (ui.anchor) {
+//                case ANCHOR_TOP_LEFT:     finalPos = { ui.offset.x, ui.offset.y }; break;
+//                case ANCHOR_TOP_RIGHT:    finalPos = { sw - ui.size.x - ui.offset.x, ui.offset.y }; break;
+//                    // TODO - other anchors
+//                }
+//
+//                Rectangle rect = { finalPos.x, finalPos.y, ui.size.x, ui.size.y };
+//
+//                // Collision Detection
+//                bool isHovered = CheckCollisionPointRec(GetMousePosition(), rect);
+//
+//                if (isHovered) {
+//                    // Only trigger if hovered AND clicked
+//                    if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+//                        ui.isPressed = true;
+//                        if (ui.onClick) {
+//                            ui.onClick(); // This will now only fire if the mouse is on the button
+//                        }
+//                    }
+//                    DrawRectangleRec(rect, ColorBrightness(ui.color, -0.2f)); // Hover visual
+//                }
+//                else {
+//                    ui.isPressed = false;
+//                    DrawRectangleRec(rect, ui.color);
+//                }
+//
+//                DrawText(ui.text.c_str(), (int)finalPos.x + 5, (int)finalPos.y + 5, 20, WHITE);
+//            }
+//        }
+//    }
+//}
 
 
 

@@ -36,18 +36,33 @@ struct ScriptComponent {
 
 enum UIAnchor { ANCHOR_TOP_LEFT, ANCHOR_TOP_RIGHT, ANCHOR_CENTER, ANCHOR_BOTTOM_LEFT };
 
+enum UIType { UI_BUTTON, UI_TEXT, UI_IMAGE, UI_PANEL, UI_CHECKBOX, UI_SLIDER, UI_LABEL };
+
+struct UICanvasComponent {
+    std::string name = "New Canvas";
+    bool isActive = true;
+};
+
 struct UIComponent {
-    std::string text = "Button";
+    UIType type = UI_BUTTON;
+    std::string name = "Widget";
+
+    Entity parentCanvas = -1;
+
     UIAnchor anchor = ANCHOR_TOP_LEFT;
     Vector2 offset = { 100, 100 };
     Vector2 size = { 150, 40 };
+
     Color color = DARKGRAY;
-    int fontSize = 20; // Added this for better text control
+	std::string text = "Text";
+    int fontSize = 20;
 
-    // Editor State (Not saved, used for dragging)
+    // For UI_IMAGE
+    std::string texturePath = "";
+    Texture2D texture = { 0 };
+
+    // Editor/Runtime State
     bool isDragging = false;
-
-    // Runtime Logic
     bool isPressed = false;
     std::function<void()> onClick;
 };

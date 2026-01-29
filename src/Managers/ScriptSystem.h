@@ -19,8 +19,12 @@ public:
     sol::state lua;
     std::unordered_map<std::string, ScriptInstance> scriptCache;
 
-    void Init(Registry& reg) {
+    void Init(Registry& reg,Camera2D* cam) {
         lua.open_libraries(sol::lib::base, sol::lib::math, sol::lib::string, sol::lib::package);
+
+		lua["CreateEntity"] = [&reg]() {
+            return reg.CreateEntity();
+            };
 
         //Direct access methods
         lua["GetPos"] = [&reg](Entity e) {
@@ -64,6 +68,79 @@ public:
             "SetRotation", [](TransformComponent& t, float rot) { t.rotation = rot; }
         );
 
+        lua.new_usertype<SpriteComponent>("Sprite",
+            "texturePath", &SpriteComponent::texturePath,
+            "tint", &SpriteComponent::tint,
+            "anchor", &SpriteComponent::anchor,
+            "flipX", &SpriteComponent::flipX
+		);
+
+        lua.new_usertype<Color>("Color",
+            "r", &Color::r,
+            "g", &Color::g,
+            "b", &Color::b,
+            "a", &Color::a
+		);
+
+        lua["AddSprite"] = [&reg](Entity e, std::string path, float anchorX, float anchorY) {
+            if (e >= MAX_ENTITIES) return;
+            SpriteComponent sp;
+            sp.texturePath = path;
+            sp.texture = LoadTexture(path.c_str()); // Note: In a real game, use an Asset Cache!
+            sp.anchor = { anchorX, anchorY };
+            sp.tint = WHITE;
+            reg.AddComponent(e, sp);
+            };
+
+        lua["AddTransform"] = [&reg](Entity e, float x, float y, float sx, float sy) {
+            if (e >= MAX_ENTITIES) return;
+            TransformComponent tr;
+            tr.position = { x, y };
+            tr.scale = { sx, sy };
+            tr.rotation = 0.0f;
+            reg.AddComponent(e, tr);
+            };
+
+        lua["SetEntitySize"] = [&reg](Entity e, float targetWidth, float targetHeight) {
+            if (e >= MAX_ENTITIES || !reg.HasComponent(e, COMP_SPRITE) || !reg.HasComponent(e, COMP_TRANSFORM)) return;
+
+            auto& sprite = reg.sprites[e];
+            auto& transform = reg.transforms[e];
+
+            if (sprite.texture.id != 0) {
+                transform.scale.x = targetWidth / (float)sprite.texture.width;
+                transform.scale.y = targetHeight / (float)sprite.texture.height;
+            }
+            };
+
+        lua.set_function("MakeColor", [](unsigned char r, unsigned char g, unsigned char b, unsigned char a) {
+            return Color{ r, g, b, a };
+            });
+
+        lua["InvertColor"] = [&reg](Entity e) {
+            if (e >= MAX_ENTITIES || !reg.HasComponent(e, COMP_SPRITE)) return;
+
+            auto& sprite = reg.sprites[e];
+
+            Image img = LoadImage(sprite.texturePath.c_str());
+            if (img.data != nullptr) {
+                ImageColorInvert(&img);
+
+                UnloadTexture(sprite.texture);
+                sprite.texture = LoadTextureFromImage(img);
+
+                UnloadImage(img);
+            }
+            else {
+                TraceLog(LOG_WARNING, "LUA: Failed to invert color, image path invalid: %s", sprite.texturePath.c_str());
+            }
+            };
+
+        lua["SetTint"] = [&reg](Entity e, Color color) {
+            if (e < MAX_ENTITIES && reg.HasComponent(e, COMP_SPRITE)) {
+                reg.sprites[e].tint = color;
+            }
+            };
         // High-level Component Access
         lua["GetTransform"] = [&reg](Entity e) -> TransformComponent* {
             if (e >= 0 && e < MAX_ENTITIES && reg.HasComponent(e, COMP_TRANSFORM)) {
@@ -77,6 +154,14 @@ public:
             return reg.HasComponent(e, COMP_TRANSFORM);
             };
 
+        lua["ScreenToWorld"] = [cam](float screenX, float screenY) {
+            if (cam) {
+                // Converts mouse pixels to game-world coordinates based on pan/zoom
+                return GetScreenToWorld2D({ screenX, screenY }, *cam);
+            }
+            return Vector2{ screenX, screenY };
+            };
+
         // Utility / Math
         lua["IsKeyDown"] = [](int key) { return ::IsKeyDown(key); };
         lua["GetDeltaTime"] = []() { return ::GetFrameTime(); };
@@ -84,6 +169,11 @@ public:
         lua["KEY_W"] = 87; lua["KEY_A"] = 65; lua["KEY_S"] = 83; lua["KEY_D"] = 68;
         lua["KEY_RIGHT"] = 262; lua["KEY_LEFT"] = 263; lua["KEY_UP"] = 265; lua["KEY_DOWN"] = 264;
         lua["KEY_SPACE"] = 32;
+        lua["IsMouseButtonPressed"] = [](int button) { return ::IsMouseButtonPressed(button); };
+        lua["GetMousePos"] = []() {
+            return GetMousePosition();
+            };
+        lua["MOUSE_LEFT"] = 0;
     }
 
     void Execute(Entity e, const std::string& path, float dt) {

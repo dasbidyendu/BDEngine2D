@@ -7,6 +7,7 @@
 #include "Managers/ResourceManager.h"
 #include "ECS/Systems.h"
 #include "Managers/ScriptSystem.h"
+#include "ECS/UISystem.h"
 #include "raymath.h"
 #include "Utils/AssetEntry.h"
 
