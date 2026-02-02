@@ -8,7 +8,7 @@
 #include <tuple>
 #include <unordered_map>
 #include "ECS/Registry.h"
-
+#include "raymath.h"
 struct ScriptInstance {
     sol::environment env;
     sol::protected_function updateFunc;
@@ -113,10 +113,24 @@ public:
             }
             };
 
-        lua.set_function("MakeColor", [](unsigned char r, unsigned char g, unsigned char b, unsigned char a) {
-            return Color{ r, g, b, a };
+        lua.set_function("MakeColor", [](float r, float g, float b, float a) {
+            return Color{
+                (unsigned char)std::clamp(r, 0.0f, 255.0f),
+                (unsigned char)std::clamp(g, 0.0f, 255.0f),
+                (unsigned char)std::clamp(b, 0.0f, 255.0f),
+                (unsigned char)std::clamp(a, 0.0f, 255.0f)
+            };
             });
-
+        lua["DrawCircleWorld"] = [](float x, float y, float radius, Color color) {
+            ::DrawCircleLines((int)x, (int)y, radius, color);
+            };
+        lua["GetTint"] = [&reg](Entity e) -> sol::optional<Color> {
+            if (e < MAX_ENTITIES && reg.HasComponent(e, COMP_SPRITE)) {
+                return reg.sprites[e].tint;
+            }
+            return sol::nullopt;
+            };
+        lua["GetTime"] = []() { return (float)::GetTime(); };
         lua["InvertColor"] = [&reg](Entity e) {
             if (e >= MAX_ENTITIES || !reg.HasComponent(e, COMP_SPRITE)) return;
 
@@ -160,6 +174,56 @@ public:
                 return GetScreenToWorld2D({ screenX, screenY }, *cam);
             }
             return Vector2{ screenX, screenY };
+            };
+        lua["GetEntities"] = [&reg, this](sol::variadic_args args) {
+            sol::table results = lua.create_table();
+            int index = 1;
+
+            // Determine if we are doing a spatial query
+            bool spatial = (args.size() >= 3);
+            float cx = 0, cy = 0, r = 0;
+
+            if (spatial) {
+                cx = args[0];
+                cy = args[1];
+                r = args[2];
+            }
+
+            for (Entity i = 0; i < MAX_ENTITIES; ++i) {
+                if (!reg.HasComponent(i, COMP_TRANSFORM)) continue;
+
+                if (spatial) {
+                    auto& pos = reg.transforms[i].position;
+                    float distSq = (pos.x - cx) * (pos.x - cx) + (pos.y - cy) * (pos.y - cy);
+                    if (distSq > (r * r)) continue; // Outside radius
+                }
+                results[index++] = i;
+            }
+            return results;
+            };
+
+        lua["GetDistance"] = [&reg](sol::variadic_args args) {
+            //Two Entities - GetDistance(e1, e2)
+            if (args.size() == 2) {
+                Entity e1 = args[0];
+                Entity e2 = args[1];
+
+                if (reg.HasComponent(e1, COMP_TRANSFORM) && reg.HasComponent(e2, COMP_TRANSFORM)) {
+                    return Vector2Distance(reg.transforms[e1].position, reg.transforms[e2].position);
+                }
+            }
+            //Point to Entity - GetDistance(x, y, e)
+            else if (args.size() == 3) {
+                float x = args[0];
+                float y = args[1];
+                Entity e = args[2];
+
+                if (reg.HasComponent(e, COMP_TRANSFORM)) {
+                    return Vector2Distance({ x, y }, reg.transforms[e].position);
+                }
+            }
+
+            return -1.0f; // Error/Invalid case
             };
 
         // Utility / Math

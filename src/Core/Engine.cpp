@@ -115,11 +115,11 @@ void Engine::Run() {
 }
 
 void Engine::InitGame() {
-    Entity chessManager = registry->CreateEntity();
+    Entity gameEntity = registry->CreateEntity();
 
 	ScriptComponent sc;
-	sc.scriptPaths.push_back("assets/scripts/chess.lua");
-	registry->AddComponent(chessManager, sc);
+	sc.scriptPaths.push_back("assets/scripts/echo.lua");
+	registry->AddComponent(gameEntity, sc);
 
     editorAssets = AssetScanner::Scan("assets");
     ScanThemes();

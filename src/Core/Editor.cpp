@@ -58,23 +58,37 @@ void Editor::Update() {
         }
 
         if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON) && draggedAssetIndex != -1) {
-            draggedAssetIndex = -1;
+                draggedAssetIndex = -1;
         }
     }
     else {
         if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON) && draggedAssetIndex != -1) {
-            if (!mouseInUI) {
+            if (!mouseInSidebar && !mouseInInspector) {
                 auto& asset = owner->editorAssets[draggedAssetIndex];
                 if (asset.isTexture) {
+                    owner->assets.LoadTextureAsset(asset.name, asset.path);
+
+                    Texture2D tex = owner->assets.GetTexture(asset.name);
+
                     Vector2 worldMouse = GetScreenToWorld2D(mousePos, owner->GetCamera());
                     Vector2 snappedPos = { floor(worldMouse.x / 32) * 32, floor(worldMouse.y / 32) * 32 };
 
                     Entity newEntity = owner->registry->CreateEntity();
                     owner->registry->AddComponent(newEntity, TransformComponent{ snappedPos, {1.0f, 1.0f}, 0.0f });
-                    owner->registry->AddComponent(newEntity, SpriteComponent{ asset.name, owner->assets.GetTexture(asset.name), WHITE, {0.5f, 0.5f}, false });
+
+                    owner->registry->AddComponent(newEntity, SpriteComponent{
+                        asset.name,
+                        tex,
+                        WHITE,
+                        {0.5f, 0.5f},
+                        false
+                        });
                 }
+                draggedAssetIndex = -1;
             }
-            draggedAssetIndex = -1;
+            else if (mouseInSidebar) {
+                draggedAssetIndex = -1;
+            }
         }
 
         if (!mouseInUI && IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && draggedAssetIndex == -1) {
@@ -320,6 +334,8 @@ namespace EditorSystem {
                 if (asset.isTexture) {
                     ui.texturePath = asset.path;
                     ui.texture = engine->assets.GetTexture(asset.name);
+
+                    engine->editor->draggedAssetIndex = -1;
                 }
             }
             currentY += 45;
@@ -332,6 +348,23 @@ namespace EditorSystem {
         currentY = startY + boxHeight + 10;
     }
 
+    void DragFloat(const char* label, float* value, float speed, Rectangle bounds, int controlId, Engine* engine) {
+        bool isPressed = CheckCollisionPointRec(GetMousePosition(), bounds) && IsMouseButtonDown(MOUSE_LEFT_BUTTON);
+
+        // If clicking and moving, treat as a slider
+        if (isPressed && engine->activeControlId == 0) {
+            Vector2 delta = GetMouseDelta();
+            *value += delta.x * speed;
+        }
+
+        // Standard RayGui ValueBox for manual entry
+        int tempVal = (int)*value;
+        if (GuiValueBox(bounds, label, &tempVal, -9999, 9999, engine->activeControlId == controlId)) {
+            engine->activeControlId = (engine->activeControlId == controlId) ? 0 : controlId;
+        }
+        *value = (float)tempVal;
+    }
+
     void DrawInspector(Entity e, Registry& reg, int screenWidth, int screenHeight, Engine* engine) {
         if (e < 0 || e >= MAX_ENTITIES || reg.entityMasks[e].none()) return;
 
@@ -339,77 +372,108 @@ namespace EditorSystem {
         float xPos = (float)screenWidth - panelWidth;
         float padding = 10.0f;
         float currentY = 10.0f;
-        float controlHeight = 24.0f;
+        float ctrlH = 24.0f;
 
         DrawRectangleRec({ xPos, 0, panelWidth, (float)screenHeight }, GetColor(GuiGetStyle(DEFAULT, BACKGROUND_COLOR)));
         DrawLineEx({ xPos, 0 }, { xPos, (float)screenHeight }, 2.0f, DARKGRAY);
+
         GuiLabel({ xPos + padding, currentY, panelWidth, 30 }, TextFormat("#141# INSPECTOR: ENTITY %i", e));
         currentY += 40;
 
+        // --- TRANSFORM COMPONENT ---
         if (reg.HasComponent(e, COMP_TRANSFORM)) {
             auto& t = reg.transforms[e];
-            GuiGroupBox({ xPos + 5, currentY, panelWidth - 10, 120 }, "TRANSFORM");
-            float labelWidth = 45;
-            float inputWidth = (panelWidth - 35 - labelWidth) / 2;
-            float fullInputWidth = panelWidth - 30 - labelWidth;
+            GuiGroupBox({ xPos + 5, currentY, panelWidth - 10, 110 }, "TRANSFORM");
 
-            int posX = (int)t.position.x; int posY = (int)t.position.y;
-            int rot = (int)t.rotation; int scl = (int)(t.scale.x * 100.0f);
+            float labelW = 40;
+            float inputW = (panelWidth - 65) / 2; // Split width for two columns
 
-            GuiLabel({ xPos + 15, currentY + 20, labelWidth, controlHeight }, "Pos");
-            if (GuiValueBox({ xPos + 15 + labelWidth, currentY + 20, inputWidth, controlHeight }, "X", &posX, -9999, 9999, (engine->activeControlId == 1))) engine->activeControlId = (engine->activeControlId == 1) ? 0 : 1;
-            if (GuiValueBox({ xPos + 15 + labelWidth + inputWidth + 5, currentY + 20, inputWidth, controlHeight }, "Y", &posY, -9999, 9999, (engine->activeControlId == 2))) engine->activeControlId = (engine->activeControlId == 2) ? 0 : 2;
+            // Position Row (X & Y)
+            GuiLabel({ xPos + 15, currentY + 20, labelW, ctrlH }, "Pos");
+            DragFloat("X", &t.position.x, 1.0f, { xPos + 60, currentY + 20, inputW, ctrlH }, 1, engine);
+            DragFloat("Y", &t.position.y, 1.0f, { xPos + 65 + inputW, currentY + 20, inputW, ctrlH }, 2, engine);
 
-            GuiLabel({ xPos + 15, currentY + 50, labelWidth, controlHeight }, "Rot");
-            if (GuiValueBox({ xPos + 15 + labelWidth, currentY + 50, fullInputWidth, controlHeight }, NULL, &rot, 0, 360, (engine->activeControlId == 3))) engine->activeControlId = (engine->activeControlId == 3) ? 0 : 3;
+            // Rotation Row
+            GuiLabel({ xPos + 15, currentY + 50, labelW, ctrlH }, "Rot");
+            DragFloat(NULL, &t.rotation, 0.5f, { xPos + 60, currentY + 50, panelWidth - 75, ctrlH }, 3, engine);
 
-            GuiLabel({ xPos + 15, currentY + 80, labelWidth, controlHeight }, "Scl %");
-            if (GuiValueBox({ xPos + 15 + labelWidth, currentY + 80, fullInputWidth, controlHeight }, NULL, &scl, 1, 1000, (engine->activeControlId == 4))) engine->activeControlId = (engine->activeControlId == 4) ? 0 : 4;
+            float displayScaleX = t.scale.x * 100.0f;
+            float displayScaleY = t.scale.y * 100.0f;
 
-            t.position = { (float)posX, (float)posY };
-            t.rotation = (float)rot;
-            t.scale = { (float)scl / 100.0f, (float)scl / 100.0f };
-            currentY += 130;
+            GuiLabel({ xPos + 15, currentY + 80, labelW, ctrlH }, "Scl %");
+            DragFloat("X", &displayScaleX, 1.0f, { xPos + 60, currentY + 80, inputW, ctrlH }, 4, engine);
+            DragFloat("Y", &displayScaleY, 1.0f, { xPos + 65 + inputW, currentY + 80, inputW, ctrlH }, 5, engine);
+
+            t.scale.x = displayScaleX / 100.0f;
+            t.scale.y = displayScaleY / 100.0f;
+
+            currentY += 120;
+        }
+
+        bool hasScript = reg.HasComponent(e, COMP_SCRIPT);
+        Rectangle scriptBox = { xPos + 5, currentY, panelWidth - 10, hasScript ? 100.0f : 40.0f };
+
+        // Handle Drag & Drop Logic for Scripts
+        bool isHoveringScript = CheckCollisionPointRec(GetMousePosition(), scriptBox);
+        bool draggingLua = (engine->editor->draggedAssetIndex != -1 &&
+            engine->editorAssets[engine->editor->draggedAssetIndex].path.find(".lua") != std::string::npos);
+
+        if (hasScript) {
+            auto& sc = reg.scripts[e];
+            scriptBox.height = 40.0f + (std::max((int)sc.scriptPaths.size(), 1) * 30.0f);
+
+            if (isHoveringScript && draggingLua) {
+                DrawRectangleRec(scriptBox, Fade(GOLD, 0.3f));
+                if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON)) {
+                    std::string path = engine->editorAssets[engine->editor->draggedAssetIndex].path;
+                    if (std::find(sc.scriptPaths.begin(), sc.scriptPaths.end(), path) == sc.scriptPaths.end()) {
+                        sc.scriptPaths.push_back(path);
+                    }
+                    engine->editor->draggedAssetIndex = -1;
+                }
+            }
+
+            GuiGroupBox(scriptBox, "SCRIPTS");
+            float sY = currentY + 25;
+            for (int i = 0; i < (int)sc.scriptPaths.size(); i++) {
+                GuiLabel({ xPos + 15, sY, panelWidth - 70, 25 }, GetFileName(sc.scriptPaths[i].c_str()));
+                if (GuiButton({ xPos + panelWidth - 40, sY, 25, 25 }, "#113#")) {
+                    sc.scriptPaths.erase(sc.scriptPaths.begin() + i);
+                }
+                sY += 30;
+            }
+            currentY += scriptBox.height + 10;
+        }
+        else {
+            if (GuiButton(scriptBox, "+ ADD SCRIPT")) {
+                reg.AddComponent(e, ScriptComponent{ {}, false });
+            }
+            // Logic to drop a script onto an entity that DOESN'T have the component yet
+            if (isHoveringScript && draggingLua && IsMouseButtonReleased(MOUSE_LEFT_BUTTON)) {
+                std::string path = engine->editorAssets[engine->editor->draggedAssetIndex].path;
+
+                if (reg.HasComponent(e, COMP_SCRIPT)) {
+                    auto& sc = reg.scripts[e];
+                    if (std::find(sc.scriptPaths.begin(), sc.scriptPaths.end(), path) == sc.scriptPaths.end()) {
+                        sc.scriptPaths.push_back(path);
+                    }
+                }
+                else {
+                    ScriptComponent newSc;
+                    newSc.scriptPaths.push_back(path);
+                    reg.AddComponent(e, newSc);
+                }
+
+                engine->editor->draggedAssetIndex = -1; // Explicitly consume the asset here
+            }
+            currentY += 50;
         }
 
         if (reg.HasComponent(e, COMP_SPRITE)) DrawSpriteEditor(e, reg, xPos, currentY, panelWidth, engine);
 
-        if (reg.HasComponent(e, COMP_SCRIPT)) {
-            auto& sc = reg.scripts[e];
-            float scriptEntryHeight = 30.0f;
-            float boxHeight = 40.0f + (std::max((int)sc.scriptPaths.size(), 1) * scriptEntryHeight);
-            Rectangle scriptBox = { xPos + 5, currentY, panelWidth - 10, boxHeight };
-            bool isHovered = CheckCollisionPointRec(GetMousePosition(), scriptBox);
-            bool isDraggingScript = (engine->editor->draggedAssetIndex != -1 && engine->editorAssets[engine->editor->draggedAssetIndex].path.find(".lua") != std::string::npos);
-
-            DrawRectangleRec(scriptBox, (isHovered && isDraggingScript) ? Fade(GOLD, 0.3f) : Fade(GRAY, 0.1f));
-            GuiGroupBox(scriptBox, "SCRIPT COMPONENT (Multi)");
-
-            if (isHovered && isDraggingScript && IsMouseButtonReleased(MOUSE_LEFT_BUTTON)) {
-                std::string path = engine->editorAssets[engine->editor->draggedAssetIndex].path;
-                if (std::find(sc.scriptPaths.begin(), sc.scriptPaths.end(), path) == sc.scriptPaths.end()) {
-                    sc.scriptPaths.push_back(path);
-                    engine->scriptEngine->scriptCache.erase(path);
-                }
-                engine->editor->draggedAssetIndex = -1;
-            }
-
-            float currentScriptY = currentY + 25;
-            for (int i = 0; i < (int)sc.scriptPaths.size(); ) {
-                GuiLabel({ xPos + 10, currentScriptY, panelWidth - 60, 25 }, TextFormat("#%i: %s", i + 1, GetFileName(sc.scriptPaths[i].c_str())));
-                if (GuiButton({ xPos + panelWidth - 35, currentScriptY, 25, 25 }, "#113#")) sc.scriptPaths.erase(sc.scriptPaths.begin() + i);
-                else { currentScriptY += scriptEntryHeight; i++; }
-            }
-            currentY += boxHeight + 10;
+        if (GuiButton({ xPos + 5, (float)screenHeight - 40, panelWidth - 10, 30 }, "#158# DESTROY ENTITY")) {
+            reg.entityMasks[e].reset();
         }
-        else {
-            if (GuiButton({ xPos + 5, currentY, panelWidth - 10, 30 }, "+ ADD SCRIPT COMPONENT")) reg.AddComponent(e, ScriptComponent{ {}, false });
-            currentY += 40;
-        }
-
-        if (reg.HasComponent(e, COMP_UI)) DrawUIInspector(e, reg, xPos, currentY, panelWidth, engine);
-
-        if (GuiButton({ xPos + 5, (float)screenHeight - 40, panelWidth - 10, 30 }, "#158# DELETE ENTITY")) reg.entityMasks[e].reset();
     }
 
     void DrawSettingsMenu(bool& open, int& activeTab, Registry& reg, Engine* engine) {
@@ -486,10 +550,14 @@ namespace EditorSystem {
         GuiLabel({ xPos + 15, currentY + 20, panelWidth - 30, 20 }, TextFormat("Res: %ix%i", s.texture.width, s.texture.height));
         int width = (int)(s.texture.width * t.scale.x);
         int height = (int)(s.texture.height * t.scale.y);
-        if (GuiValueBox({ xPos + 75, currentY + 45, 80, 24 }, "W", &width, 1, 4096, (engine->activeControlId == 10))) engine->activeControlId = (engine->activeControlId == 10) ? 0 : 10;
-        if (GuiValueBox({ xPos + 165, currentY + 45, 80, 24 }, "H", &height, 1, 4096, (engine->activeControlId == 11))) engine->activeControlId = (engine->activeControlId == 11) ? 0 : 11;
-        t.scale.x = (float)width / s.texture.width;
-        t.scale.y = (float)height / s.texture.height;
+
+        // If user edits pixels directly
+        if (GuiValueBox({ xPos + 75, currentY + 45, 80, 24 }, "W", &width, 1, 4096, engine->activeControlId == 10)) {
+            t.scale.x = (float)width / s.texture.width;
+        }
+        if (GuiValueBox({ xPos + 165, currentY + 45, 80, 24 }, "H", &height, 1, 4096, engine->activeControlId == 11)) {
+            t.scale.y = (float)height / s.texture.height;
+        }
 
         for (int row = 0; row < 3; row++) {
             for (int col = 0; col < 3; col++) {

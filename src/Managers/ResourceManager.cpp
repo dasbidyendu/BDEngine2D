@@ -1,6 +1,6 @@
 #include "ResourceManager.h"
 #include <iostream>
-
+#include <filesystem>
 ResourceManager::ResourceManager(){}
 
 ResourceManager::~ResourceManager() {
@@ -19,8 +19,10 @@ void ResourceManager::LoadTextureAsset(const std::string& name, const std::strin
 	Texture2D tex = LoadTexture(filePath.c_str());
 
 	if (tex.id == 0) {
+		if (!std::filesystem::exists(filePath)) {
+			std::cout << "ERROR: File does not exist at path: " << filePath << std::endl;
+		}
 		std::cout << "Failed to Load Texture : " << filePath << std::endl;
-
 	}
 	else {
 		textures[name] = tex;
