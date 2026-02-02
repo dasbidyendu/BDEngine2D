@@ -4,15 +4,16 @@
 #include <sstream>
 #include <iomanip>
 #include "ECS/Registry.h"
-
-// Forward declaration to avoid circular includes
-class Engine;
+#include "Engine.h"
 
 class SceneManager {
 public:
     static void SaveScene(const std::string& filename, Registry& reg) {
         std::ofstream file(filename);
-        if (!file.is_open()) return;
+        if (!file.is_open()) {
+            std::cout << "Failed to open file for saving: " << filename << std::endl;
+            return;
+        }
 
         for (Entity i = 0; i < MAX_ENTITIES; i++) {
             if (reg.entityMasks[i].none()) continue;
@@ -37,6 +38,11 @@ public:
                 file << "VELOCITY " << v.speed.x << " " << v.speed.y << "\n";
             }
 
+            if (reg.HasComponent(i, COMP_INPUT)) {
+                // Assuming InputComponent might have a simple toggle or type
+                file << "INPUT\n";
+            }
+
             if (reg.HasComponent(i, COMP_SCRIPT)) {
                 auto& sc = reg.scripts[i];
                 file << "SCRIPTS " << sc.scriptPaths.size();
@@ -45,6 +51,11 @@ public:
                 }
                 file << "\n";
             }
+
+            /*if (reg.HasComponent(i, COMP_UICANVAS)) {
+                auto& canv = reg.uiCanvases[i];
+                file << "UICANVAS " << (canv.isVisible ? 1 : 0) << "\n";
+            }*/
 
             if (reg.HasComponent(i, COMP_UI)) {
                 auto& ui = reg.uiComponents[i];
@@ -60,18 +71,22 @@ public:
 
     static void LoadScene(const std::string& filename, Registry& reg, Engine* engine) {
         std::ifstream file(filename);
-        if (!file.is_open()) return;
+        if (!file.is_open()) {
+            std::cout << "Failed to open scene: " << filename << std::endl;
+            return;
+        }
 
         reg.Clear();
         std::string line;
         Entity maxE = 0;
+        Entity currentE = 0;
 
         while (std::getline(file, line)) {
+            if (line.empty() || line == "END") continue;
+
             std::stringstream ss(line);
             std::string cmd;
             ss >> cmd;
-
-            static Entity currentE = 0;
 
             if (cmd == "ENTITY") {
                 ss >> currentE;
@@ -90,8 +105,12 @@ public:
                 s.flipX = (flip == 1);
 
                 if (!s.texturePath.empty()) {
-                    // Note: accessing engine->assets directly as per your class header
                     s.texture = engine->assets.GetTexture(s.texturePath);
+                    // If not in manager, load it (using name as path for consistency)
+                    if (s.texture.id == 0) {
+                        engine->assets.LoadTextureAsset(s.texturePath, s.texturePath);
+                        s.texture = engine->assets.GetTexture(s.texturePath);
+                    }
                 }
                 reg.AddComponent(currentE, s);
             }
@@ -99,6 +118,9 @@ public:
                 VelocityComponent v;
                 ss >> v.speed.x >> v.speed.y;
                 reg.AddComponent(currentE, v);
+            }
+            else if (cmd == "INPUT") {
+                reg.AddComponent(currentE, InputComponent{});
             }
             else if (cmd == "SCRIPTS") {
                 int count;
@@ -111,6 +133,11 @@ public:
                 }
                 reg.AddComponent(currentE, sc);
             }
+            /*else if (cmd == "UICANVAS") {
+                int visible;
+                ss >> visible;
+                reg.AddComponent(currentE, UICanvasComponent{ (bool)visible });
+            }*/
             else if (cmd == "UI") {
                 UIComponent ui;
                 int anchor, r, g, b, a;
@@ -120,7 +147,10 @@ public:
                 reg.AddComponent(currentE, ui);
             }
         }
+
         reg.SetNextEntity(maxE);
         file.close();
+
+        std::cout << "Scene Loaded: " << filename << " (Entities: " << (int)maxE << ")" << std::endl;
     }
 };

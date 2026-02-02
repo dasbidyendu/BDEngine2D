@@ -134,9 +134,25 @@ void Engine::InitGame() {
 }
 
 void Engine::Update() {
+	if (currentState == EngineState::STARTUP) {
+        if (activeToast.active) {
+            activeToast.timeRemaining -= GetFrameTime();
+
+            if (activeToast.timeRemaining < 1.0f) {
+                activeToast.opacity = activeToast.timeRemaining;
+            }
+            else {
+                activeToast.opacity = 1.0f;
+            }
+
+            if (activeToast.timeRemaining <= 0) {
+                activeToast.active = false;
+            }
+        }
+        return;
+    }
     double startTime = GetTime();
 
-    // DYNAMIC RESOLUTION UPDATE
     if (IsWindowResized() || IsWindowFullscreen()) {
         screenWidth = GetScreenWidth();
         screenHeight = GetScreenHeight();
@@ -226,38 +242,166 @@ void Engine::Update() {
 
     double endTime = GetTime();
     stats.logicTime = (float)(endTime - startTime) * 1000.0f;
+
+    if (activeToast.active) {
+        activeToast.timeRemaining -= GetFrameTime();
+
+        if (activeToast.timeRemaining < 1.0f) {
+            activeToast.opacity = activeToast.timeRemaining;
+        }
+        else {
+            activeToast.opacity = 1.0f;
+        }
+
+        if (activeToast.timeRemaining <= 0) {
+            activeToast.active = false;
+        }
+    }
+
+    if (IsKeyDown(KEY_LEFT_CONTROL) && IsKeyPressed(KEY_S)) {
+        SceneManager::SaveScene(currentScenePath, *registry);
+        TraceLog(LOG_INFO, "SYSTEM: Scene saved to %s", currentScenePath.c_str());
+    }
+
+    if (IsKeyDown(KEY_LEFT_CONTROL) && IsKeyPressed(KEY_L)) {
+		SceneManager::LoadScene(currentScenePath, *registry, this);
+    }
 }
 
 void Engine::Render() {
-    //TraceLog(LOG_INFO, "ENGINE: Render Start");
     BeginDrawing();
     ClearBackground(currentTheme.background);
-
-    BeginMode2D(camera);
-    if (isEditorMode && showGrid) {
-        EditorSystem::DrawGrid(gridSize, camera, screenWidth, screenHeight, gridColor);
+    if (currentState == EngineState::STARTUP) {
+		DrawStartupScreen();
+        DrawFileBrowser();
     }
+    else {
+        BeginMode2D(camera);
+        if (isEditorMode && showGrid) {
+            EditorSystem::DrawGrid(gridSize, camera, screenWidth, screenHeight, gridColor);
+        }
 
-    if (isEditorMode && selectedEntity != -1 && registry->HasComponent(selectedEntity, COMP_TRANSFORM)) {
-        auto& t = registry->transforms[selectedEntity];
-        auto& s = registry->sprites[selectedEntity];
-        Rectangle outline = { t.position.x - 2, t.position.y - 2,
-                             (s.texture.width * t.scale.x) + 4, (s.texture.height * t.scale.y) + 4 };
-        DrawRectangleLinesEx(outline, 2.0f / camera.zoom, ORANGE);
+        if (isEditorMode && selectedEntity != -1 && registry->HasComponent(selectedEntity, COMP_TRANSFORM)) {
+            auto& t = registry->transforms[selectedEntity];
+            auto& s = registry->sprites[selectedEntity];
+            Rectangle outline = { t.position.x - 2, t.position.y - 2,
+                                 (s.texture.width * t.scale.x) + 4, (s.texture.height * t.scale.y) + 4 };
+            DrawRectangleLinesEx(outline, 2.0f / camera.zoom, ORANGE);
+        }
+
+        RenderSystem::Draw(*registry);
+        EndMode2D();
+
+        UISystem::Draw(*registry);
+
+        if (isEditorMode) {
+            editor->Render();
+        }
+
+        DebugSystem::Draw(*registry, stats, GetScreenWidth());
+
     }
-
-    RenderSystem::Draw(*registry);
-    EndMode2D();
-
-    UISystem::Draw(*registry);
-
-    if (isEditorMode) {
-        editor->Render();
-    }
-
-    DebugSystem::Draw(*registry, stats, GetScreenWidth());
+    
+	DrawToast();
 
     EndDrawing();
+}
+
+void Engine::DrawStartupScreen(){
+    int centerX = GetScreenWidth() / 2 - 100;
+    int centerY = GetScreenHeight() / 2 - 50;
+
+    DrawText("BDENGINE2D", centerX - 20, centerY - 60, 30, currentTheme.accentColor);
+
+    // OPEN SCENE
+    if (GuiButton({ (float)centerX, (float)centerY, 200, 40 }, "Open Scene")) {
+        RefreshSceneList();
+            showFileBrowser = true;
+			DrawFileBrowser();
+			ShowToast("Select a scene to open.");
+    }
+    // NEW SCENE 
+    if (GuiButton({ (float)centerX, (float)centerY + 50, 200, 40 }, "New Scene")) {
+        try {
+            registry = std::make_unique<Registry>();
+            if (!registry) throw std::runtime_error("Failed to allocate Registry!");
+            currentScenePath = "assets/scenes/new_level.scene";
+            currentState = EngineState::EDITOR;
+        }
+        catch (const std::exception& e) {
+            ShowToast("Critical: Could not create new scene.");
+        }
+    }
+
+}
+
+void Engine::RefreshSceneList() {
+    sceneFiles.clear();
+    if (DirectoryExists("assets/scenes")) {
+        FilePathList files = LoadDirectoryFiles("assets/scenes");
+        for (unsigned int i = 0; i < files.count; i++) {
+            if (IsFileExtension(files.paths[i], ".scene")) {
+                sceneFiles.push_back(files.paths[i]);
+            }
+        }
+        UnloadDirectoryFiles(files);
+    }
+}
+
+void Engine::DrawFileBrowser() {
+    if (!showFileBrowser) return;
+
+    float width = 400;
+    float height = 300;
+    float x = (GetScreenWidth() - width) / 2;
+    float y = (GetScreenHeight() - height) / 2;
+
+    DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(), ColorAlpha(BLACK, 0.4f));
+
+    if (GuiWindowBox({ x, y, width, height }, "SELECT SCENE")) {
+        showFileBrowser = false;
+    }
+
+    float itemHeight = 35;
+    for (size_t i = 0; i < sceneFiles.size(); i++) {
+        std::string fileName = GetFileName(sceneFiles[i].c_str());
+
+        if (GuiButton({ x + 10, y + 40 + (i * (itemHeight + 5)), width - 20, itemHeight }, fileName.c_str())) {
+            try {
+                currentScenePath = sceneFiles[i];
+                currentState = EngineState::EDITOR;
+                showFileBrowser = false;
+                SceneManager::LoadScene(currentScenePath, *registry, this);
+            }
+            catch (const std::exception& e) {
+                ShowToast(e.what());
+            }
+        }
+    }
+}
+
+void Engine::ShowToast(const std::string& msg) {
+    activeToast.message = msg;
+    activeToast.timeRemaining = 4.0f;
+    activeToast.active = true;
+    activeToast.opacity = 1.0f;
+}
+
+void Engine::DrawToast() {
+    if (!activeToast.active) return;
+
+    float alpha = (activeToast.timeRemaining < 1.0f) ? activeToast.timeRemaining : 1.0f;
+
+    int tw = 320;
+    int th = 50;
+    float posX = GetScreenWidth() - tw - 20;
+    float posY = GetScreenHeight() - th - 20;
+
+    DrawRectangleRounded({ posX, posY, (float)tw, (float)th }, 0.3f, 6, ColorAlpha(currentTheme.panelBG, alpha * 0.95f));
+    DrawRectangleRoundedLines({ posX, posY, (float)tw, (float)th }, 0.3f, 6, ColorAlpha(RED, alpha));
+
+    DrawText("!", (int)posX + 15, (int)posY + 15, 20, ColorAlpha(RED, alpha));
+    DrawText(activeToast.message.c_str(), (int)posX + 40, (int)posY + 18, 14, ColorAlpha(WHITE, alpha));
 }
 
 void Engine::ScanThemes() {

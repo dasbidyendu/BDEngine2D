@@ -14,6 +14,13 @@
 
 class Editor;
 
+struct Toast {
+    std::string message;
+    float timeRemaining;
+    float opacity;
+    bool active = false;
+};
+
 class Engine {
 public:
     Engine(int width, int height, const std::string& title);
@@ -27,6 +34,9 @@ public:
     void SaveConfig();
     void LoadConfig();
     void LoadEngineFont(const std::string& path);
+
+	void DrawToast();
+	void ShowToast(const std::string& msg);
 
     Camera2D& GetCamera() { return camera; }
 
@@ -85,4 +95,20 @@ private:
 
     Font engineFont;
     void ScanFonts();
+
+    enum class EngineState{STARTUP , EDITOR , GAME};
+	EngineState currentState = EngineState::STARTUP;
+
+	std::string currentScenePath = "assets/scenes/main.scene";
+	bool projectLoaded = false;
+
+    Toast activeToast;
+
+    bool showFileBrowser = false;
+    std::vector<std::string> sceneFiles;
+    void RefreshSceneList();
+
+	void DrawStartupScreen();
+	void DrawFileBrowser();
+
 };
