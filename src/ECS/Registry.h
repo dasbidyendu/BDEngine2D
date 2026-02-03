@@ -15,6 +15,7 @@ public:
 		uiCanvases.resize(MAX_ENTITIES);
         scripts.resize(MAX_ENTITIES);
         entityMasks.resize(MAX_ENTITIES);
+		spriteAnimations.resize(MAX_ENTITIES);
     }
 
     Entity CreateEntity() {
@@ -59,6 +60,11 @@ public:
         uiCanvases[entity] = c;
         entityMasks[entity].set(COMP_UICANVAS);
 	}
+    
+    void AddComponent(Entity entity, SpriteAnimationComponent c) {
+        spriteAnimations[entity] = c;
+        entityMasks[entity].set(COMP_SPRITE_ANIMATION);
+	}
 
     bool HasComponent(Entity entity, ComponentType type) {
         return entityMasks[entity].test(type);
@@ -87,7 +93,7 @@ public:
 	std::vector<UICanvasComponent> uiCanvases;
     std::vector<UIComponent> uiComponents;
 	std::vector<ScriptComponent> scripts;
-
+	std::vector<SpriteAnimationComponent> spriteAnimations;
     std::vector<std::bitset<COMP_COUNT>> entityMasks;
 
 private:

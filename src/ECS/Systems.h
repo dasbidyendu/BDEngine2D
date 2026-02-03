@@ -18,6 +18,22 @@ namespace MovementSystem {
         }
     }
 }
+
+namespace AnimationSystem {
+    inline void Update(Registry& reg, float dt) {
+        for (Entity i = 0; i < MAX_ENTITIES; i++) {
+            if (reg.HasComponent(i, COMP_SPRITE_ANIMATION) && reg.HasComponent(i, COMP_SPRITE)) {
+                auto& anim = reg.spriteAnimations[i];
+                anim.elapsedTime += dt;
+                if (anim.elapsedTime >= anim.frameDuration) {
+                    anim.elapsedTime -= anim.frameDuration;
+                    anim.currentFrame = (anim.currentFrame + 1) % anim.frameCount;
+                }
+            }
+        }
+    }
+}
+
 namespace RenderSystem {
     inline void Draw(Registry& reg) {
         for (Entity i = 0; i < MAX_ENTITIES; i++) {
@@ -25,21 +41,32 @@ namespace RenderSystem {
                 auto& t = reg.transforms[i];
                 auto& s = reg.sprites[i];
 
-                // Define source area (Handling Flips)
+                float frameWidth = (float)s.texture.width;
+                float frameHeight = (float)s.texture.height;
+                float frameX = 0.0f;
+
+                if (reg.HasComponent(i, COMP_SPRITE_ANIMATION)) {
+                    auto& anim = reg.spriteAnimations[i];
+                    if (anim.frameCount > 0) {
+                        frameWidth = (float)s.texture.width / anim.frameCount;
+                        frameX = anim.currentFrame * frameWidth;
+                    }
+                }
+
                 Rectangle sourceRec = {
-                    0.0f, 0.0f,
-                    (float)s.texture.width * (s.flipX ? -1.0f : 1.0f),
-                    (float)s.texture.height
+                    frameX,
+                    0.0f,
+                    frameWidth * (s.flipX ? -1.0f : 1.0f),
+                    frameHeight
                 };
 
-                // Define destination area (Position and Scale)
                 Rectangle destRec = {
-                    t.position.x, t.position.y,
-                    (float)s.texture.width * t.scale.x,
-                    (float)s.texture.height * t.scale.y
+                    t.position.x,
+                    t.position.y,
+                    frameWidth * t.scale.x,
+                    frameHeight * t.scale.y
                 };
 
-                // We multiply the normalized anchor (0-1) by the scaled dimensions
                 Vector2 origin = {
                     s.anchor.x * destRec.width,
                     s.anchor.y * destRec.height
@@ -208,3 +235,4 @@ namespace DebugSystem {
         DrawText("F1: Settings | F2: Debug", (int)x + 10, (int)y + panelHeight - 15, 10, GRAY);
     }
 }
+

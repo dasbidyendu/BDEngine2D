@@ -23,6 +23,8 @@ public:
     int browserActiveTab = 0;
     int draggedAssetIndex = -1;
 
+    
+
     enum EditorMode {
         MODE_WORLD,
         MODE_UI_EDITOR

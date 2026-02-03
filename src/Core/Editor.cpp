@@ -380,6 +380,7 @@ namespace EditorSystem {
         GuiLabel({ xPos + padding, currentY, panelWidth, 30 }, TextFormat("#141# INSPECTOR: ENTITY %i", e));
         currentY += 40;
 
+
         // --- TRANSFORM COMPONENT ---
         if (reg.HasComponent(e, COMP_TRANSFORM)) {
             auto& t = reg.transforms[e];
@@ -474,6 +475,51 @@ namespace EditorSystem {
         if (GuiButton({ xPos + 5, (float)screenHeight - 40, panelWidth - 10, 30 }, "#158# DESTROY ENTITY")) {
             reg.entityMasks[e].reset();
         }
+
+        static int inspectorDropdownActive = 0;
+        static bool showAddDropdown = false;
+        const char* compNames = "ADD_COMP;TRANSFORM;SPRITE;VELOCITY;INPUT;SCRIPT;SPRITE ANIMATION";
+
+        if (GuiDropdownBox({ xPos + 5, currentY ,panelWidth - padding, 20.0f}, compNames, &inspectorDropdownActive, showAddDropdown)) {
+            showAddDropdown = !showAddDropdown;
+        }
+
+        if (!showAddDropdown && inspectorDropdownActive > 0) {
+            switch (inspectorDropdownActive) {
+            case 1: {
+				if (!reg.HasComponent(e, COMP_TRANSFORM))
+                    reg.AddComponent(e, TransformComponent{ {0,0}, {1,1}, 0 });
+                break;
+            }
+            case 2: {
+				if (!reg.HasComponent(e, COMP_SPRITE))
+                    reg.AddComponent(e, SpriteComponent{ "assets/textures/test.png", {0}, WHITE, {0.5f,0.5f}, false });
+                break;
+            }
+            case 3: {
+				if (!reg.HasComponent(e, COMP_VELOCITY))
+                    reg.AddComponent(e, VelocityComponent{ {10,10} });
+                break;
+            }
+            case 4: {
+				if (!reg.HasComponent(e, COMP_INPUT))
+                    reg.AddComponent(e, InputComponent{});
+                break;
+            }
+            case 5: {
+				if (!reg.HasComponent(e, COMP_SCRIPT))
+                    reg.AddComponent(e, ScriptComponent{ {}, false });
+                break;
+            }
+            case 6: {
+				if (!reg.HasComponent(e, COMP_SPRITE_ANIMATION))
+                    reg.AddComponent(e, SpriteAnimationComponent{ 8, 0, 0.1f, 0.0f, true });
+                break;
+            }
+           }
+        }
+		inspectorDropdownActive = 0;
+        currentY += 60;
     }
 
     void DrawSettingsMenu(bool& open, int& activeTab, Registry& reg, Engine* engine) {

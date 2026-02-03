@@ -14,5 +14,6 @@ enum ComponentType : std::uint8_t {
 	COMP_UICANVAS,
     COMP_UI,
     COMP_SCRIPT,
+	COMP_SPRITE_ANIMATION,
     COMP_COUNT 
 };

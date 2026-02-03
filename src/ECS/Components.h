@@ -66,3 +66,11 @@ struct UIComponent {
     bool isPressed = false;
     std::function<void()> onClick;
 };
+
+struct SpriteAnimationComponent {
+    int frameCount = 1;
+    int currentFrame = 0;
+    float frameDuration = 0.1f;
+    float elapsedTime = 0.0f;
+    bool isPlaying = true;
+};

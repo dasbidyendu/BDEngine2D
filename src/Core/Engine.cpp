@@ -117,9 +117,12 @@ void Engine::Run() {
 void Engine::InitGame() {
     Entity gameEntity = registry->CreateEntity();
 
-	ScriptComponent sc;
+	/*ScriptComponent sc;
 	sc.scriptPaths.push_back("assets/scripts/echo.lua");
-	registry->AddComponent(gameEntity, sc);
+	registry->AddComponent(gameEntity, sc);*/
+	registry->AddComponent(gameEntity, TransformComponent{ {100, 100}, {1, 1}, 0 });
+	registry->AddComponent(gameEntity, SpriteComponent{ "assets/textures/checker.png", LoadTexture("assets/textures/checker.png") });
+    registry->AddComponent(gameEntity, SpriteAnimationComponent{8,0,0.1f});
 
     editorAssets = AssetScanner::Scan("assets");
     ScanThemes();
@@ -129,8 +132,8 @@ void Engine::InitGame() {
             assets.LoadTextureAsset(asset.name, asset.path);
         }
     }
-
-    SceneManager::LoadScene("assets/scenes/main.scene", *registry, this);
+	//TODO - Create a persistent scene system
+    //SceneManager::LoadScene("assets/scenes/main.scene", *registry, this);
 }
 
 void Engine::Update() {
@@ -205,10 +208,10 @@ void Engine::Update() {
             // PLAY MODE LOGIC
             InputSystem::Update(*registry);
             ControlSystem::Update(*registry);
-
+			
             float dt = GetFrameTime();
             MovementSystem::Update(*registry, dt);
-
+            AnimationSystem::Update(*registry, dt);
             if (scriptEngine) {
                 for (Entity i = 0; i < MAX_ENTITIES; i++) {
                     if (registry->HasComponent(i, COMP_SCRIPT)) {
