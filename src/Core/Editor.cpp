@@ -365,14 +365,117 @@ namespace EditorSystem {
         *value = (float)tempVal;
     }
 
-    void DrawInspector(Entity e, Registry& reg, int screenWidth, int screenHeight, Engine* engine) {
-        if (e < 0 || e >= MAX_ENTITIES || reg.entityMasks[e].none()) return;
+    void DragFloat(const char* label, float* value, float speed, Rectangle bounds, int controlId,int min,int max, Engine* engine) {
+        bool isPressed = CheckCollisionPointRec(GetMousePosition(), bounds) && IsMouseButtonDown(MOUSE_LEFT_BUTTON);
 
+        if (isPressed && engine->activeControlId == 0) {
+            Vector2 delta = GetMouseDelta();
+            *value += delta.x * speed;
+        }
+
+        int tempVal = (int)*value;
+        if (GuiValueBox(bounds, label, &tempVal, min, max, engine->activeControlId == controlId)) {
+            engine->activeControlId = (engine->activeControlId == controlId) ? 0 : controlId;
+        }
+        *value = (float)tempVal;
+    }
+    void DragInt(const char* label, int* value, float speed, Rectangle bounds, int controlId, int min, int max, Engine* engine) {
+        Vector2 mousePos = GetMousePosition();
+        bool isHovered = CheckCollisionPointRec(mousePos, bounds);
+        int typingId = controlId + 1000;
+
+        bool isTyping = (engine->activeControlId == typingId);
+        bool isDragging = (engine->activeControlId == controlId);
+
+        static int typingBuffer = 0;
+
+        if (engine->activeControlId != 0 && !isTyping && !isDragging) {
+            GuiValueBox(bounds, label, value, min, max, false);
+            return;
+        }
+
+        if (isHovered && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+            typingBuffer = *value;
+            engine->activeControlId = typingId;
+        }
+
+        if (isTyping && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
+            Vector2 delta = GetMouseDelta();
+            if (fabs(delta.x) > 2.0f) { 
+                engine->activeControlId = controlId; 
+            }
+        }
+
+        if (engine->activeControlId == controlId) {
+            Vector2 delta = GetMouseDelta();
+            *value += (int)(delta.x * speed);
+            if (*value < min) *value = min;
+            if (*value > max) *value = max;
+
+            if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON)) engine->activeControlId = 0;
+        }
+
+        if (GuiValueBox(bounds, label, isTyping ? &typingBuffer : value, INT_MIN, INT_MAX, isTyping)) {
+            if (isTyping) {
+                *value = Clamp(typingBuffer, min, max);
+                engine->activeControlId = 0;
+            }
+        }
+
+        if (isTyping && IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && !isHovered) {
+            *value = Clamp(typingBuffer, min, max);
+            engine->activeControlId = 0;
+        }
+    }
+    void IntBox(const char* label, int* value, Rectangle bounds, int controlId, int min, int max, Engine* engine) {
+        Vector2 mousePos = GetMousePosition();
+        bool isHovered = CheckCollisionPointRec(mousePos, bounds);
+
+        int typingId = controlId + 1000;
+        bool isTyping = (engine->activeControlId == typingId);
+
+        static int typingBuffer = 0;
+
+        if (GuiValueBox(bounds, label, isTyping ? &typingBuffer : value, INT_MIN, INT_MAX, isTyping)) {
+            if (!isTyping) {
+                typingBuffer = *value;
+                engine->activeControlId = typingId;
+            }
+            else {
+                *value = (typingBuffer < min) ? min : (typingBuffer > max ? max : typingBuffer);
+                engine->activeControlId = 0;
+            }
+        }
+
+        if (isTyping) {
+            int safeVal = typingBuffer;
+            if (safeVal < min) safeVal = min;
+            if (safeVal > max) safeVal = max;
+            *value = safeVal;
+
+            if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && !isHovered) {
+                engine->activeControlId = 0;
+            }
+        }
+    }
+    void DrawInspector(Entity e, Registry& reg, int screenWidth, int screenHeight, Engine* engine) {
+		
+        if (e < 0 || e >= MAX_ENTITIES || reg.entityMasks[e].none()) return;
+        static Vector2 scrollOffset = { 0, 0 };
+        static float contentHeight = 0;
         float panelWidth = 300.0f;
         float xPos = (float)screenWidth - panelWidth;
         float padding = 10.0f;
-        float currentY = 10.0f;
+        
         float ctrlH = 24.0f;
+        Rectangle viewBounds = { xPos,0,panelWidth,(float)screenHeight };
+		Rectangle contentArea= { 0,0,panelWidth-15,contentHeight };
+
+		Rectangle view = GuiScrollPanel(viewBounds,NULL ,contentArea, &scrollOffset);
+
+		BeginScissorMode((int)view.x, (int)view.y, (int)view.width, (int)view.height);
+        
+        float currentY = view.y + scrollOffset.y + 10.0f;
 
         DrawRectangleRec({ xPos, 0, panelWidth, (float)screenHeight }, GetColor(GuiGetStyle(DEFAULT, BACKGROUND_COLOR)));
         DrawLineEx({ xPos, 0 }, { xPos, (float)screenHeight }, 2.0f, DARKGRAY);
@@ -380,6 +483,7 @@ namespace EditorSystem {
         GuiLabel({ xPos + padding, currentY, panelWidth, 30 }, TextFormat("#141# INSPECTOR: ENTITY %i", e));
         currentY += 40;
 
+        
 
         // --- TRANSFORM COMPONENT ---
         if (reg.HasComponent(e, COMP_TRANSFORM)) {
@@ -411,6 +515,30 @@ namespace EditorSystem {
             currentY += 120;
         }
 
+		if (reg.HasComponent(e, COMP_VELOCITY)) {
+            auto& v = reg.velocities[e];
+            GuiGroupBox({ xPos + 5, currentY, panelWidth - 10, 80 }, "VELOCITY");
+            float labelW = 40;
+            float inputW = (panelWidth - 65) / 2;
+            GuiLabel({ xPos + 15, currentY + 20, labelW, ctrlH }, "Vel");
+            DragFloat("X", &v.speed.x, 1.0f, { xPos + 60, currentY + 20, inputW, ctrlH }, 6, engine);
+            DragFloat("Y", &v.speed.y, 1.0f, { xPos + 65 + inputW, currentY + 20, inputW, ctrlH }, 7, engine);
+            currentY += 90;
+        }
+
+        if (reg.HasComponent(e, COMP_SPRITE_ANIMATION)) {
+			auto& sa = reg.spriteAnimations[e];
+			GuiGroupBox({ xPos + 5, currentY, panelWidth - 10, 150 }, "SPRITE ANIMATION");
+			IntBox("Frame Count", &sa.frameCount, { xPos + 15, currentY + 20, panelWidth - 30, ctrlH }, 8,1,100 ,engine);
+			IntBox("Row Count", &sa.rowCount, { xPos + 15, currentY + 50, panelWidth - 30, ctrlH }, 9,1,100, engine);
+            int fpsDisplay = (sa.frameDuration > 0) ? (int)(1.0f / sa.frameDuration) : 0;
+            int originalFps = fpsDisplay;
+            IntBox("FPS", &fpsDisplay, { xPos + 15, currentY + 80, panelWidth - 30, ctrlH }, 10, 1, 120, engine);
+            if (fpsDisplay != originalFps && fpsDisplay > 0) {
+                sa.frameDuration = 1.0f / (float)fpsDisplay;
+            }
+            currentY += 160;
+        }
         bool hasScript = reg.HasComponent(e, COMP_SCRIPT);
         Rectangle scriptBox = { xPos + 5, currentY, panelWidth - 10, hasScript ? 100.0f : 40.0f };
 
@@ -470,56 +598,64 @@ namespace EditorSystem {
             currentY += 50;
         }
 
-        if (reg.HasComponent(e, COMP_SPRITE)) DrawSpriteEditor(e, reg, xPos, currentY, panelWidth, engine);
-
-        if (GuiButton({ xPos + 5, (float)screenHeight - 40, panelWidth - 10, 30 }, "#158# DESTROY ENTITY")) {
-            reg.entityMasks[e].reset();
+        if (reg.HasComponent(e, COMP_SPRITE)) {
+            DrawSpriteEditor(e, reg, xPos, currentY, panelWidth, engine);
         }
 
         static int inspectorDropdownActive = 0;
         static bool showAddDropdown = false;
         const char* compNames = "ADD_COMP;TRANSFORM;SPRITE;VELOCITY;INPUT;SCRIPT;SPRITE ANIMATION";
 
-        if (GuiDropdownBox({ xPos + 5, currentY ,panelWidth - padding, 20.0f}, compNames, &inspectorDropdownActive, showAddDropdown)) {
+        if (GuiDropdownBox({ xPos + 5, currentY ,panelWidth - padding, 20.0f }, compNames, &inspectorDropdownActive, showAddDropdown)) {
             showAddDropdown = !showAddDropdown;
         }
 
         if (!showAddDropdown && inspectorDropdownActive > 0) {
             switch (inspectorDropdownActive) {
             case 1: {
-				if (!reg.HasComponent(e, COMP_TRANSFORM))
+                if (!reg.HasComponent(e, COMP_TRANSFORM))
                     reg.AddComponent(e, TransformComponent{ {0,0}, {1,1}, 0 });
                 break;
             }
             case 2: {
-				if (!reg.HasComponent(e, COMP_SPRITE))
+                if (!reg.HasComponent(e, COMP_SPRITE))
                     reg.AddComponent(e, SpriteComponent{ "assets/textures/test.png", {0}, WHITE, {0.5f,0.5f}, false });
                 break;
             }
             case 3: {
-				if (!reg.HasComponent(e, COMP_VELOCITY))
+                if (!reg.HasComponent(e, COMP_VELOCITY))
                     reg.AddComponent(e, VelocityComponent{ {10,10} });
                 break;
             }
             case 4: {
-				if (!reg.HasComponent(e, COMP_INPUT))
+                if (!reg.HasComponent(e, COMP_INPUT))
                     reg.AddComponent(e, InputComponent{});
                 break;
             }
             case 5: {
-				if (!reg.HasComponent(e, COMP_SCRIPT))
+                if (!reg.HasComponent(e, COMP_SCRIPT))
                     reg.AddComponent(e, ScriptComponent{ {}, false });
                 break;
             }
             case 6: {
-				if (!reg.HasComponent(e, COMP_SPRITE_ANIMATION))
-                    reg.AddComponent(e, SpriteAnimationComponent{ 8, 0, 0.1f, 0.0f, true });
+                if (!reg.HasComponent(e, COMP_SPRITE_ANIMATION))
+                    reg.AddComponent(e, SpriteAnimationComponent{ 8, 8,0,0, 0.1f, 0.0f, true });
                 break;
             }
-           }
+            }
         }
-		inspectorDropdownActive = 0;
+        inspectorDropdownActive = 0;
         currentY += 60;
+
+        if (GuiButton({ xPos + 5, (float)screenHeight - 40, panelWidth - 10, 30 }, "#158# DESTROY ENTITY")) {
+            reg.entityMasks[e].reset();
+        }
+
+        
+
+		EndScissorMode();
+
+		contentHeight = (currentY - (view.y + scrollOffset.y)) + 300.0f; 
     }
 
     void DrawSettingsMenu(bool& open, int& activeTab, Registry& reg, Engine* engine) {

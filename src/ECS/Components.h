@@ -69,7 +69,9 @@ struct UIComponent {
 
 struct SpriteAnimationComponent {
     int frameCount = 1;
+    int rowCount = 1;
     int currentFrame = 0;
+	int currentRow = 0;
     float frameDuration = 0.1f;
     float elapsedTime = 0.0f;
     bool isPlaying = true;

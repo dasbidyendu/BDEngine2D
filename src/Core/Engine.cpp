@@ -122,7 +122,7 @@ void Engine::InitGame() {
 	registry->AddComponent(gameEntity, sc);*/
 	registry->AddComponent(gameEntity, TransformComponent{ {100, 100}, {1, 1}, 0 });
 	registry->AddComponent(gameEntity, SpriteComponent{ "assets/textures/checker.png", LoadTexture("assets/textures/checker.png") });
-    registry->AddComponent(gameEntity, SpriteAnimationComponent{8,0,0.1f});
+    registry->AddComponent(gameEntity, SpriteAnimationComponent{8,8,0,0,0.1f});
 
     editorAssets = AssetScanner::Scan("assets");
     ScanThemes();

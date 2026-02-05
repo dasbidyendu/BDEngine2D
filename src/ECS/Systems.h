@@ -24,10 +24,14 @@ namespace AnimationSystem {
         for (Entity i = 0; i < MAX_ENTITIES; i++) {
             if (reg.HasComponent(i, COMP_SPRITE_ANIMATION) && reg.HasComponent(i, COMP_SPRITE)) {
                 auto& anim = reg.spriteAnimations[i];
+                if (!anim.isPlaying) continue;
                 anim.elapsedTime += dt;
                 if (anim.elapsedTime >= anim.frameDuration) {
                     anim.elapsedTime -= anim.frameDuration;
                     anim.currentFrame = (anim.currentFrame + 1) % anim.frameCount;
+                    if (anim.currentFrame == 0) {
+						anim.currentRow = (anim.currentRow + 1) % anim.rowCount;
+                    }
                 }
             }
         }
@@ -44,18 +48,21 @@ namespace RenderSystem {
                 float frameWidth = (float)s.texture.width;
                 float frameHeight = (float)s.texture.height;
                 float frameX = 0.0f;
+				float frameY = 0.0f;
 
                 if (reg.HasComponent(i, COMP_SPRITE_ANIMATION)) {
                     auto& anim = reg.spriteAnimations[i];
                     if (anim.frameCount > 0) {
                         frameWidth = (float)s.texture.width / anim.frameCount;
+						frameHeight = (float)s.texture.height / anim.rowCount;
                         frameX = anim.currentFrame * frameWidth;
+						frameY = anim.currentRow * frameHeight;
                     }
                 }
 
                 Rectangle sourceRec = {
                     frameX,
-                    0.0f,
+                    frameY,
                     frameWidth * (s.flipX ? -1.0f : 1.0f),
                     frameHeight
                 };
