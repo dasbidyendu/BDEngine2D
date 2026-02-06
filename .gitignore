@@ -46,3 +46,7 @@
 *.filters
 *.user
 /assets
+/Build/Lua
+/Int/Lua
+/Int
+/Build

@@ -206,12 +206,19 @@ void Engine::Update() {
         }
         else {
             // PLAY MODE LOGIC
+            
             InputSystem::Update(*registry);
             ControlSystem::Update(*registry);
 			
             float dt = GetFrameTime();
             MovementSystem::Update(*registry, dt);
             AnimationSystem::Update(*registry, dt);
+
+            physicsSystem.StartFrame(*registry);
+
+			physicsSystem.UpdatePhysics(0.03f,*registry,physicsGrid);
+
+            physicsSystem.SyncPoint(*registry);
             if (scriptEngine) {
                 for (Entity i = 0; i < MAX_ENTITIES; i++) {
                     if (registry->HasComponent(i, COMP_SCRIPT)) {
@@ -259,7 +266,7 @@ void Engine::Render() {
     }
 
     DebugSystem::Draw(*registry, stats, GetScreenWidth());
-
+	DebugSystem::PhysicsDebug(*registry, camera);
     EndDrawing();
 }
 

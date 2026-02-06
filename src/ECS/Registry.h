@@ -16,6 +16,8 @@ public:
         scripts.resize(MAX_ENTITIES);
         entityMasks.resize(MAX_ENTITIES);
 		spriteAnimations.resize(MAX_ENTITIES);
+		rigidPhysicsComponents.resize(MAX_ENTITIES);
+		circleColliders.resize(MAX_ENTITIES);
     }
 
     Entity CreateEntity() {
@@ -66,6 +68,16 @@ public:
         entityMasks[entity].set(COMP_SPRITE_ANIMATION);
 	}
 
+    void AddComponent(Entity entity, RigidPhysicsComponent c) {
+        rigidPhysicsComponents[entity] = c;
+        entityMasks[entity].set(COMP_RIGIDPHYSICS);
+	}
+
+    void AddComponent(Entity entity, CircleColliderComponent c) {
+        circleColliders[entity] = c;
+        entityMasks[entity].set(COMP_CIRCLECOLLIDER);
+    }
+
     bool HasComponent(Entity entity, ComponentType type) {
         return entityMasks[entity].test(type);
     }
@@ -94,6 +106,8 @@ public:
     std::vector<UIComponent> uiComponents;
 	std::vector<ScriptComponent> scripts;
 	std::vector<SpriteAnimationComponent> spriteAnimations;
+	std::vector<RigidPhysicsComponent> rigidPhysicsComponents;
+	std::vector<CircleColliderComponent> circleColliders;
     std::vector<std::bitset<COMP_COUNT>> entityMasks;
 
 private:

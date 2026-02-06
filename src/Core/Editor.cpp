@@ -365,7 +365,7 @@ namespace EditorSystem {
         *value = (float)tempVal;
     }
 
-    void DragFloat(const char* label, float* value, float speed, Rectangle bounds, int controlId,int min,int max, Engine* engine) {
+    void DragFloat(const char* label, float* value, float speed, Rectangle bounds, int controlId, int min, int max, Engine* engine) {
         bool isPressed = CheckCollisionPointRec(GetMousePosition(), bounds) && IsMouseButtonDown(MOUSE_LEFT_BUTTON);
 
         if (isPressed && engine->activeControlId == 0) {
@@ -401,8 +401,8 @@ namespace EditorSystem {
 
         if (isTyping && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
             Vector2 delta = GetMouseDelta();
-            if (fabs(delta.x) > 2.0f) { 
-                engine->activeControlId = controlId; 
+            if (fabs(delta.x) > 2.0f) {
+                engine->activeControlId = controlId;
             }
         }
 
@@ -458,23 +458,62 @@ namespace EditorSystem {
             }
         }
     }
+
+    void FloatBox(const char* label, float* value, Rectangle bounds, int controlId, float min, float max, Engine* engine) {
+        Vector2 mousePos = GetMousePosition();
+        bool isHovered = CheckCollisionPointRec(mousePos, bounds);
+
+        int typingId = controlId + 2000;
+        bool isTyping = (engine->activeControlId == typingId);
+
+        static char textBuffer[64] = { 0 };
+
+        if (!isTyping) {
+            sprintf(textBuffer, "%.3f", *value);
+        }
+
+        if (GuiTextBox(bounds, textBuffer, 64, isTyping)) {
+            if (!isTyping) {
+                engine->activeControlId = typingId;
+            }
+            else {
+                float parsed = atof(textBuffer);
+                *value = (parsed < min) ? min : (parsed > max ? max : parsed);
+                engine->activeControlId = 0;
+            }
+        }
+
+        if (isTyping) {
+            float liveParsed = atof(textBuffer);
+            if (liveParsed >= min && liveParsed <= max) {
+                *value = liveParsed;
+            }
+
+            if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && !isHovered) {
+                float finalParsed = atof(textBuffer);
+                *value = (finalParsed < min) ? min : (finalParsed > max ? max : finalParsed);
+                engine->activeControlId = 0;
+            }
+        }
+    }
+
     void DrawInspector(Entity e, Registry& reg, int screenWidth, int screenHeight, Engine* engine) {
-		
+
         if (e < 0 || e >= MAX_ENTITIES || reg.entityMasks[e].none()) return;
         static Vector2 scrollOffset = { 0, 0 };
         static float contentHeight = 0;
         float panelWidth = 300.0f;
         float xPos = (float)screenWidth - panelWidth;
         float padding = 10.0f;
-        
+
         float ctrlH = 24.0f;
         Rectangle viewBounds = { xPos,0,panelWidth,(float)screenHeight };
-		Rectangle contentArea= { 0,0,panelWidth-15,contentHeight };
+        Rectangle contentArea = { 0,0,panelWidth - 15,contentHeight };
 
-		Rectangle view = GuiScrollPanel(viewBounds,NULL ,contentArea, &scrollOffset);
+        Rectangle view = GuiScrollPanel(viewBounds, NULL, contentArea, &scrollOffset);
 
-		BeginScissorMode((int)view.x, (int)view.y, (int)view.width, (int)view.height);
-        
+        BeginScissorMode((int)view.x, (int)view.y, (int)view.width, (int)view.height);
+
         float currentY = view.y + scrollOffset.y + 10.0f;
 
         DrawRectangleRec({ xPos, 0, panelWidth, (float)screenHeight }, GetColor(GuiGetStyle(DEFAULT, BACKGROUND_COLOR)));
@@ -483,22 +522,22 @@ namespace EditorSystem {
         GuiLabel({ xPos + padding, currentY, panelWidth, 30 }, TextFormat("#141# INSPECTOR: ENTITY %i", e));
         currentY += 40;
 
-        
 
-        // --- TRANSFORM COMPONENT ---
+
+        //TRANSFORM COMPONENT
         if (reg.HasComponent(e, COMP_TRANSFORM)) {
             auto& t = reg.transforms[e];
             GuiGroupBox({ xPos + 5, currentY, panelWidth - 10, 110 }, "TRANSFORM");
 
             float labelW = 40;
-            float inputW = (panelWidth - 65) / 2; // Split width for two columns
+            float inputW = (panelWidth - 65) / 2;
 
-            // Position Row (X & Y)
+
             GuiLabel({ xPos + 15, currentY + 20, labelW, ctrlH }, "Pos");
             DragFloat("X", &t.position.x, 1.0f, { xPos + 60, currentY + 20, inputW, ctrlH }, 1, engine);
             DragFloat("Y", &t.position.y, 1.0f, { xPos + 65 + inputW, currentY + 20, inputW, ctrlH }, 2, engine);
 
-            // Rotation Row
+
             GuiLabel({ xPos + 15, currentY + 50, labelW, ctrlH }, "Rot");
             DragFloat(NULL, &t.rotation, 0.5f, { xPos + 60, currentY + 50, panelWidth - 75, ctrlH }, 3, engine);
 
@@ -515,7 +554,7 @@ namespace EditorSystem {
             currentY += 120;
         }
 
-		if (reg.HasComponent(e, COMP_VELOCITY)) {
+        if (reg.HasComponent(e, COMP_VELOCITY)) {
             auto& v = reg.velocities[e];
             GuiGroupBox({ xPos + 5, currentY, panelWidth - 10, 80 }, "VELOCITY");
             float labelW = 40;
@@ -527,10 +566,10 @@ namespace EditorSystem {
         }
 
         if (reg.HasComponent(e, COMP_SPRITE_ANIMATION)) {
-			auto& sa = reg.spriteAnimations[e];
-			GuiGroupBox({ xPos + 5, currentY, panelWidth - 10, 150 }, "SPRITE ANIMATION");
-			IntBox("Frame Count", &sa.frameCount, { xPos + 15, currentY + 20, panelWidth - 30, ctrlH }, 8,1,100 ,engine);
-			IntBox("Row Count", &sa.rowCount, { xPos + 15, currentY + 50, panelWidth - 30, ctrlH }, 9,1,100, engine);
+            auto& sa = reg.spriteAnimations[e];
+            GuiGroupBox({ xPos + 5, currentY, panelWidth - 10, 150 }, "SPRITE ANIMATION");
+            IntBox("Frame Count", &sa.frameCount, { xPos + 15, currentY + 20, panelWidth - 30, ctrlH }, 8, 1, 100, engine);
+            IntBox("Row Count", &sa.rowCount, { xPos + 15, currentY + 50, panelWidth - 30, ctrlH }, 9, 1, 100, engine);
             int fpsDisplay = (sa.frameDuration > 0) ? (int)(1.0f / sa.frameDuration) : 0;
             int originalFps = fpsDisplay;
             IntBox("FPS", &fpsDisplay, { xPos + 15, currentY + 80, panelWidth - 30, ctrlH }, 10, 1, 120, engine);
@@ -539,6 +578,12 @@ namespace EditorSystem {
             }
             currentY += 160;
         }
+
+        /*if (reg.HasComponent(e, COMP_RIGIDPHYSICS)) {
+            auto& rp = reg.rigidPhysicsComponents[e];
+            GuiGroupBox({ xPos + 5, currentY, panelWidth - 10, 120 }, "RIGID PHYSICS");
+            FloatBox("Mass", &rp.mass, { xPos + 15, currentY + 20, panelWidth - 30, ctrlH }, 11, 1, 1000, engine);
+        }*/
         bool hasScript = reg.HasComponent(e, COMP_SCRIPT);
         Rectangle scriptBox = { xPos + 5, currentY, panelWidth - 10, hasScript ? 100.0f : 40.0f };
 
@@ -604,7 +649,7 @@ namespace EditorSystem {
 
         static int inspectorDropdownActive = 0;
         static bool showAddDropdown = false;
-        const char* compNames = "ADD_COMP;TRANSFORM;SPRITE;VELOCITY;INPUT;SCRIPT;SPRITE ANIMATION";
+        const char* compNames = "ADD_COMP;TRANSFORM;SPRITE;VELOCITY;INPUT;SCRIPT;SPRITE ANIMATION;PHYSICS;CIRCLE_COLLIDER;";
 
         if (GuiDropdownBox({ xPos + 5, currentY ,panelWidth - padding, 20.0f }, compNames, &inspectorDropdownActive, showAddDropdown)) {
             showAddDropdown = !showAddDropdown;
@@ -642,120 +687,130 @@ namespace EditorSystem {
                     reg.AddComponent(e, SpriteAnimationComponent{ 8, 8,0,0, 0.1f, 0.0f, true });
                 break;
             }
+            case 7: {
+                if (!reg.HasComponent(e, COMP_RIGIDPHYSICS))
+                    reg.AddComponent(e, RigidPhysicsComponent{ 1.0f, true });
+                break;
             }
+            case 8: {
+                if (!reg.HasComponent(e, COMP_CIRCLECOLLIDER))
+                    reg.AddComponent(e, CircleColliderComponent{ 25.0f, {0,0}, true });
+                break;
+            }
+            }
+            inspectorDropdownActive = 0;
+            currentY += 60;
+
+            if (GuiButton({ xPos + 5, (float)screenHeight - 40, panelWidth - 10, 30 }, "#158# DESTROY ENTITY")) {
+                reg.entityMasks[e].reset();
+            }
+
+
+
+            EndScissorMode();
+
+            contentHeight = (currentY - (view.y + scrollOffset.y)) + 300.0f;
         }
-        inspectorDropdownActive = 0;
-        currentY += 60;
-
-        if (GuiButton({ xPos + 5, (float)screenHeight - 40, panelWidth - 10, 30 }, "#158# DESTROY ENTITY")) {
-            reg.entityMasks[e].reset();
-        }
-
-        
-
-		EndScissorMode();
-
-		contentHeight = (currentY - (view.y + scrollOffset.y)) + 300.0f; 
     }
-
-    void DrawSettingsMenu(bool& open, int& activeTab, Registry& reg, Engine* engine) {
-        if (!open) return;
-        float sw = (float)GetScreenWidth();
-        float sh = (float)GetScreenHeight();
-        DrawRectangleRec({ 0, 0, sw, sh }, Fade(BLACK, 0.85f));
-        if (GuiWindowBox({ 50, 50, sw - 100, sh - 100 }, "GLOBAL ENGINE SETTINGS")) open = false;
-        const char* tabs[] = { "THEME", "GRAPHICS", "INPUT", "EDITOR" };
-        GuiTabBar({ 60, 85, sw - 120, 30 }, tabs, 4, &activeTab);
-    }
-
-    void DrawAssetBrowser(std::vector<AssetEntry>& allAssets, std::string& currentPath, int& draggedAssetIndex) {
-        float currentSH = (float)GetScreenHeight();
-        float panelWidth = 250.0f;
-        DrawRectangle(0, 0, panelWidth, currentSH, GetColor(GuiGetStyle(DEFAULT, BACKGROUND_COLOR)));
-        DrawLineEx({ panelWidth, 0 }, { panelWidth, currentSH }, 2.0f, Fade(BLACK, 0.5f));
-
-        if (GuiButton({ 5, 5, 40, 30 }, "#101#")) {
-            currentPath = fs::path(currentPath).parent_path().string();
-            std::replace(currentPath.begin(), currentPath.end(), '\\', '/');
+        void DrawSettingsMenu(bool& open, int& activeTab, Registry & reg, Engine * engine) {
+            if (!open) return;
+            float sw = (float)GetScreenWidth();
+            float sh = (float)GetScreenHeight();
+            DrawRectangleRec({ 0, 0, sw, sh }, Fade(BLACK, 0.85f));
+            if (GuiWindowBox({ 50, 50, sw - 100, sh - 100 }, "GLOBAL ENGINE SETTINGS")) open = false;
+            const char* tabs[] = { "THEME", "GRAPHICS", "INPUT", "EDITOR" };
+            GuiTabBar({ 60, 85, sw - 120, 30 }, tabs, 4, &activeTab);
         }
-        GuiLabel({ 50, 5, panelWidth - 60, 30 }, currentPath.c_str());
 
-        static Vector2 scroll = { 0, 0 };
-        Rectangle viewArea = { 0, 40, panelWidth, currentSH - 70 };
-        Rectangle content = { 0, 0, panelWidth - 20, (float)allAssets.size() * 50.0f };
-        Rectangle view = GuiScrollPanel(viewArea, NULL, content, &scroll);
+        void DrawAssetBrowser(std::vector<AssetEntry>&allAssets, std::string & currentPath, int& draggedAssetIndex) {
+            float currentSH = (float)GetScreenHeight();
+            float panelWidth = 250.0f;
+            DrawRectangle(0, 0, panelWidth, currentSH, GetColor(GuiGetStyle(DEFAULT, BACKGROUND_COLOR)));
+            DrawLineEx({ panelWidth, 0 }, { panelWidth, currentSH }, 2.0f, Fade(BLACK, 0.5f));
 
-        BeginScissorMode((int)view.x, (int)view.y, (int)view.width, (int)view.height);
-        for (int i = 0; i < (int)allAssets.size(); i++) {
-            const auto& asset = allAssets[i];
-            float itemY = view.y + scroll.y + (i * 50);
-            Rectangle slot = { 5, itemY, panelWidth - 25, 45 };
+            if (GuiButton({ 5, 5, 40, 30 }, "#101#")) {
+                currentPath = fs::path(currentPath).parent_path().string();
+                std::replace(currentPath.begin(), currentPath.end(), '\\', '/');
+            }
+            GuiLabel({ 50, 5, panelWidth - 60, 30 }, currentPath.c_str());
 
-            if (itemY + 45 > view.y && itemY < view.y + view.height) {
-                bool hovered = CheckCollisionPointRec(GetMousePosition(), slot);
-                DrawRectangleRec(slot, hovered ? Fade(GOLD, 0.2f) : Fade(GRAY, 0.1f));
+            static Vector2 scroll = { 0, 0 };
+            Rectangle viewArea = { 0, 40, panelWidth, currentSH - 70 };
+            Rectangle content = { 0, 0, panelWidth - 20, (float)allAssets.size() * 50.0f };
+            Rectangle view = GuiScrollPanel(viewArea, NULL, content, &scroll);
 
-                if (asset.isTexture && asset.preview.id != 0) DrawTexture(asset.preview, (int)slot.x + 2, (int)slot.y + 2, WHITE);
-                else if (asset.isFolder) {
-                    DrawRectangle((int)slot.x + 10, (int)slot.y + 12, 30, 20, GOLD);
-                    DrawRectangle((int)slot.x + 10, (int)slot.y + 10, 15, 5, GOLD);
+            BeginScissorMode((int)view.x, (int)view.y, (int)view.width, (int)view.height);
+            for (int i = 0; i < (int)allAssets.size(); i++) {
+                const auto& asset = allAssets[i];
+                float itemY = view.y + scroll.y + (i * 50);
+                Rectangle slot = { 5, itemY, panelWidth - 25, 45 };
+
+                if (itemY + 45 > view.y && itemY < view.y + view.height) {
+                    bool hovered = CheckCollisionPointRec(GetMousePosition(), slot);
+                    DrawRectangleRec(slot, hovered ? Fade(GOLD, 0.2f) : Fade(GRAY, 0.1f));
+
+                    if (asset.isTexture && asset.preview.id != 0) DrawTexture(asset.preview, (int)slot.x + 2, (int)slot.y + 2, WHITE);
+                    else if (asset.isFolder) {
+                        DrawRectangle((int)slot.x + 10, (int)slot.y + 12, 30, 20, GOLD);
+                        DrawRectangle((int)slot.x + 10, (int)slot.y + 10, 15, 5, GOLD);
+                    }
+
+                    if (hovered && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                        if (asset.isFolder) currentPath = asset.path;
+                        else draggedAssetIndex = i;
+                    }
+                    DrawText(asset.name.c_str(), (int)slot.x + 50, (int)slot.y + 15, 12, hovered ? WHITE : LIGHTGRAY);
                 }
+            }
+            EndScissorMode();
+        }
 
-                if (hovered && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-                    if (asset.isFolder) currentPath = asset.path;
-                    else draggedAssetIndex = i;
+        void DrawGrid(int size, Camera2D camera, int screenWidth, int screenHeight, Color color) {
+            Vector2 topLeft = GetScreenToWorld2D({ 0, 0 }, camera);
+            Vector2 bottomRight = GetScreenToWorld2D({ (float)screenWidth, (float)screenHeight }, camera);
+            float startX = floor(topLeft.x / size) * size;
+            float startY = floor(topLeft.y / size) * size;
+            float endX = ceil(bottomRight.x / size) * size;
+            float endY = ceil(bottomRight.y / size) * size;
+            for (float x = startX; x <= endX; x += size) DrawLineEx({ x, startY }, { x, endY }, 1.0f / camera.zoom, color);
+            for (float y = startY; y <= endY; y += size) DrawLineEx({ startX, y }, { endX, y }, 1.0f / camera.zoom, color);
+        }
+
+        void DrawSpriteEditor(Entity e, Registry & reg, float xPos, float& currentY, float panelWidth, Engine * engine) {
+            auto& s = reg.sprites[e];
+            auto& t = reg.transforms[e];
+            static bool colorPickerActive = false;
+            float boxHeight = colorPickerActive ? 360.0f : 210.0f;
+            GuiGroupBox({ xPos + 5, currentY, panelWidth - 10, boxHeight }, "SPRITE PROPERTIES");
+
+            GuiLabel({ xPos + 15, currentY + 20, panelWidth - 30, 20 }, TextFormat("Res: %ix%i", s.texture.width, s.texture.height));
+            int width = (int)(s.texture.width * t.scale.x);
+            int height = (int)(s.texture.height * t.scale.y);
+
+            // If user edits pixels directly
+            if (GuiValueBox({ xPos + 75, currentY + 45, 80, 24 }, "W", &width, 1, 4096, engine->activeControlId == 10)) {
+                t.scale.x = (float)width / s.texture.width;
+            }
+            if (GuiValueBox({ xPos + 165, currentY + 45, 80, 24 }, "H", &height, 1, 4096, engine->activeControlId == 11)) {
+                t.scale.y = (float)height / s.texture.height;
+            }
+
+            for (int row = 0; row < 3; row++) {
+                for (int col = 0; col < 3; col++) {
+                    Rectangle b = { xPos + 75 + (col * 22), currentY + 80 + (row * 22), 20, 20 };
+                    bool isActive = (abs(s.anchor.x - (col * 0.5f)) < 0.1f && abs(s.anchor.y - (row * 0.5f)) < 0.1f);
+                    if (GuiButton(b, isActive ? "#111#" : "")) { s.anchor.x = col * 0.5f; s.anchor.y = row * 0.5f; }
                 }
-                DrawText(asset.name.c_str(), (int)slot.x + 50, (int)slot.y + 15, 12, hovered ? WHITE : LIGHTGRAY);
             }
+
+            DrawRectangleRec({ xPos + 75, currentY + 150, 24, 24 }, s.tint);
+            if (GuiButton({ xPos + 105, currentY + 150, panelWidth - 120, 24 }, colorPickerActive ? "Close Picker" : "Edit Color")) colorPickerActive = !colorPickerActive;
+            if (colorPickerActive) s.tint = GuiColorPicker({ xPos + 75, currentY + 180, 150, 150 }, "Tint Color", s.tint);
+
+            float footerY = currentY + (colorPickerActive ? 330 : 180);
+            if (GuiButton({ xPos + 15, footerY, (panelWidth - 30) / 2, 25 }, s.flipX ? "Flipped X" : "Normal X")) s.flipX = !s.flipX;
+            if (GuiButton({ xPos + 15 + (panelWidth - 30) / 2 + 5, footerY, (panelWidth - 30) / 2 - 5, 25 }, "Reset")) { s.tint = WHITE; s.flipX = false; }
+            currentY += boxHeight + 10;
         }
-        EndScissorMode();
-    }
-
-    void DrawGrid(int size, Camera2D camera, int screenWidth, int screenHeight, Color color) {
-        Vector2 topLeft = GetScreenToWorld2D({ 0, 0 }, camera);
-        Vector2 bottomRight = GetScreenToWorld2D({ (float)screenWidth, (float)screenHeight }, camera);
-        float startX = floor(topLeft.x / size) * size;
-        float startY = floor(topLeft.y / size) * size;
-        float endX = ceil(bottomRight.x / size) * size;
-        float endY = ceil(bottomRight.y / size) * size;
-        for (float x = startX; x <= endX; x += size) DrawLineEx({ x, startY }, { x, endY }, 1.0f / camera.zoom, color);
-        for (float y = startY; y <= endY; y += size) DrawLineEx({ startX, y }, { endX, y }, 1.0f / camera.zoom, color);
-    }
-
-    void DrawSpriteEditor(Entity e, Registry& reg, float xPos, float& currentY, float panelWidth, Engine* engine) {
-        auto& s = reg.sprites[e];
-        auto& t = reg.transforms[e];
-        static bool colorPickerActive = false;
-        float boxHeight = colorPickerActive ? 360.0f : 210.0f;
-        GuiGroupBox({ xPos + 5, currentY, panelWidth - 10, boxHeight }, "SPRITE PROPERTIES");
-
-        GuiLabel({ xPos + 15, currentY + 20, panelWidth - 30, 20 }, TextFormat("Res: %ix%i", s.texture.width, s.texture.height));
-        int width = (int)(s.texture.width * t.scale.x);
-        int height = (int)(s.texture.height * t.scale.y);
-
-        // If user edits pixels directly
-        if (GuiValueBox({ xPos + 75, currentY + 45, 80, 24 }, "W", &width, 1, 4096, engine->activeControlId == 10)) {
-            t.scale.x = (float)width / s.texture.width;
-        }
-        if (GuiValueBox({ xPos + 165, currentY + 45, 80, 24 }, "H", &height, 1, 4096, engine->activeControlId == 11)) {
-            t.scale.y = (float)height / s.texture.height;
-        }
-
-        for (int row = 0; row < 3; row++) {
-            for (int col = 0; col < 3; col++) {
-                Rectangle b = { xPos + 75 + (col * 22), currentY + 80 + (row * 22), 20, 20 };
-                bool isActive = (abs(s.anchor.x - (col * 0.5f)) < 0.1f && abs(s.anchor.y - (row * 0.5f)) < 0.1f);
-                if (GuiButton(b, isActive ? "#111#" : "")) { s.anchor.x = col * 0.5f; s.anchor.y = row * 0.5f; }
-            }
-        }
-
-        DrawRectangleRec({ xPos + 75, currentY + 150, 24, 24 }, s.tint);
-        if (GuiButton({ xPos + 105, currentY + 150, panelWidth - 120, 24 }, colorPickerActive ? "Close Picker" : "Edit Color")) colorPickerActive = !colorPickerActive;
-        if (colorPickerActive) s.tint = GuiColorPicker({ xPos + 75, currentY + 180, 150, 150 }, "Tint Color", s.tint);
-
-        float footerY = currentY + (colorPickerActive ? 330 : 180);
-        if (GuiButton({ xPos + 15, footerY, (panelWidth - 30) / 2, 25 }, s.flipX ? "Flipped X" : "Normal X")) s.flipX = !s.flipX;
-        if (GuiButton({ xPos + 15 + (panelWidth - 30) / 2 + 5, footerY, (panelWidth - 30) / 2 - 5, 25 }, "Reset")) { s.tint = WHITE; s.flipX = false; }
-        currentY += boxHeight + 10;
-    }
+    
 }

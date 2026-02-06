@@ -165,7 +165,30 @@ namespace ControlSystem {
 
 
 
+
 namespace DebugSystem {
+
+    inline void PhysicsDebug(Registry& reg,Camera2D& cam) {
+        BeginMode2D(cam);
+        for (Entity i = 0; i < MAX_ENTITIES; i++) {
+            if (reg.HasComponent(i, COMP_CIRCLECOLLIDER) && reg.HasComponent(i,COMP_TRANSFORM)) {
+				auto& col = reg.circleColliders[i];
+
+                if (col.debugDraw) {
+					auto& transform = reg.transforms[i];
+					Vector2 center = Vector2Add(transform.position,col.offset);
+
+					Color debugColor = col.isColliding ? RED : GREEN;
+
+					DrawCircleLinesV(center, col.radius, debugColor);
+
+					DrawCircleV(center, 2.0f, debugColor);
+                }
+            }
+        }
+        EndMode2D();
+    }
+
     inline void Draw(const Registry& reg, DebugStats& stats, int screenWidth) {
         if (!stats.visible) return;
 

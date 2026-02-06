@@ -10,7 +10,7 @@
 #include "ECS/UISystem.h"
 #include "raymath.h"
 #include "Utils/AssetEntry.h"
-
+#include "Core/Physics.h"
 
 class Editor;
 
@@ -85,4 +85,7 @@ private:
 
     Font engineFont;
     void ScanFonts();
+
+	PhysicsSystem physicsSystem;
+    SpatialHashGrid physicsGrid{ 2000, 2000, 100 };
 };

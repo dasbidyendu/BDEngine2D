@@ -76,3 +76,19 @@ struct SpriteAnimationComponent {
     float elapsedTime = 0.0f;
     bool isPlaying = true;
 };
+
+struct RigidPhysicsComponent {
+    float mass = 1.0f;
+	float friction = 0.1f;
+	float restitution = 0.5f;
+	float gravityScale = 100.0f;
+    bool isStatic = false;
+    bool affectedByGravity = true;
+};
+
+struct CircleColliderComponent {
+    float radius = 16.0f;
+    Vector2 offset = { 0, 0 };
+	bool isColliding = false;
+	bool debugDraw = true;
+};
