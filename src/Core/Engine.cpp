@@ -14,11 +14,11 @@ Engine::Engine(int width, int height, const std::string& title)
 
     SetConfigFlags(FLAG_WINDOW_RESIZABLE);
     InitWindow(screenWidth, screenHeight, windowTitle.c_str());
-    int monitor = GetCurrentMonitor();
+    /*int monitor = GetCurrentMonitor();
     if (!IsWindowFullscreen()) {
         SetWindowSize(GetMonitorWidth(monitor), GetMonitorHeight(monitor));
         ToggleFullscreen();
-    }
+    }*/
 
     SetTargetFPS(0);
     isRunning = true;
@@ -116,14 +116,22 @@ void Engine::Run() {
 
 void Engine::InitGame() {
     Entity gameEntity = registry->CreateEntity();
-
+	Entity ent2 = registry->CreateEntity();
 	/*ScriptComponent sc;
 	sc.scriptPaths.push_back("assets/scripts/echo.lua");
 	registry->AddComponent(gameEntity, sc);*/
-	registry->AddComponent(gameEntity, TransformComponent{ {100, 100}, {1, 1}, 0 });
+	registry->AddComponent(gameEntity, TransformComponent{ {100, -100}, {1, 1}, 0 });
 	registry->AddComponent(gameEntity, SpriteComponent{ "assets/textures/checker.png", LoadTexture("assets/textures/checker.png") });
     registry->AddComponent(gameEntity, SpriteAnimationComponent{8,8,0,0,0.1f});
-
+	registry->AddComponent(gameEntity, VelocityComponent{ {0, 0} });
+	registry->AddComponent(gameEntity, RigidPhysicsComponent{1.0f,0,0,1.0f});
+	registry->AddComponent(gameEntity, CircleColliderComponent{ 50.0f, {0,0} });
+    registry->AddComponent(ent2, TransformComponent{ {100, 100}, {1, 1}, 0 });
+    registry->AddComponent(ent2, SpriteComponent{ "assets/textures/checker.png", LoadTexture("assets/textures/checker.png") });
+    registry->AddComponent(ent2, SpriteAnimationComponent{ 8,8,0,0,0.1f });
+	registry->AddComponent(ent2, VelocityComponent{ {0, 0} });
+	registry->AddComponent(ent2, RigidPhysicsComponent{ 1.0f,0,0,1.0f,true });
+	registry->AddComponent(ent2, CircleColliderComponent{ 50.0f, {0,0} });
     editorAssets = AssetScanner::Scan("assets");
     ScanThemes();
 

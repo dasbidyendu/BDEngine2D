@@ -169,9 +169,14 @@ public:
 		float overlap = radiusSum - dist;
 
 		if (overlap > 0) {
-			std::lock_guard<std::mutex> lock(commandMutex);
+			Vector2 collisionNormal;
+			if (dist > 0) {
+				collisionNormal = Vector2Scale(Vector2Subtract(posB, posA), 1.0f / dist);
+			}
+			else {
+				collisionNormal = { 0, -1 };
+			}
 
-			Vector2 collisionNormal = Vector2Normalize(Vector2Subtract(posB, posA));
 			Vector2 correction = Vector2Scale(collisionNormal, overlap / 2.0f);
 
 			bool staticA = reg.HasComponent(a, COMP_RIGIDPHYSICS) && reg.rigidPhysicsComponents[a].isStatic;
@@ -185,30 +190,28 @@ public:
 				auto& rbB = reg.rigidPhysicsComponents[b];
 
 				Vector2 rv = Vector2Subtract(nextStates[b].velocity, nextStates[a].velocity);
-
 				float velAlongNormal = Vector2DotProduct(rv, collisionNormal);
 
 				if (velAlongNormal < 0) {
 					float e = fminf(rbA.restitution, rbB.restitution);
-
 					float j = -(1 + e) * velAlongNormal;
-					j /= (1.0f / rbA.mass + 1.0f / rbB.mass);
 
-					Vector2 impulse = Vector2Scale(collisionNormal, j);
+					float invMassA = (rbA.mass > 0) ? 1.0f / rbA.mass : 0;
+					float invMassB = (rbB.mass > 0) ? 1.0f / rbB.mass : 0;
 
-					if (!staticA) {
-						nextStates[a].velocity = Vector2Subtract(nextStates[a].velocity, Vector2Scale(impulse, 1.0f / rbA.mass));
-					}
-					if (!staticB) {
-						nextStates[b].velocity = Vector2Add(nextStates[b].velocity, Vector2Scale(impulse, 1.0f / rbB.mass));
+					if (invMassA + invMassB > 0) {
+						j /= (invMassA + invMassB);
+						Vector2 impulse = Vector2Scale(collisionNormal, j);
+
+						if (!staticA) {
+							nextStates[a].velocity = Vector2Subtract(nextStates[a].velocity, Vector2Scale(impulse, invMassA));
+						}
+						if (!staticB) {
+							nextStates[b].velocity = Vector2Add(nextStates[b].velocity, Vector2Scale(impulse, invMassB));
+						}
 					}
 				}
-				
 			}
-
-			reg.circleColliders[a].isColliding = true;
-			reg.circleColliders[b].isColliding = true;
-
 			return true;
 		}
 		return false;
