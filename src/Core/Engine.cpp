@@ -113,25 +113,55 @@ void Engine::Run() {
 }
 
 void Engine::InitGame() {
-    Entity gameEntity = registry->CreateEntity();
-	Entity ent2 = registry->CreateEntity();
-    
-	/*ScriptComponent sc;
-	sc.scriptPaths.push_back("assets/scripts/chess.lua");
-	registry->AddComponent(gameEntity, sc);*/
-	registry->AddComponent(gameEntity, TransformComponent{ {100, -100}, {1, 1}, 0 });
-	registry->AddComponent(gameEntity, SpriteComponent{ "assets/textures/checker.png", LoadTexture("assets/textures/checker.png") });
-    registry->AddComponent(gameEntity, SpriteAnimationComponent{8,8,0,0,0.1f});
-	registry->AddComponent(gameEntity, VelocityComponent{ {0, 0} });
-	registry->AddComponent(gameEntity, RigidPhysicsComponent{1.0f,0,1.0f,1.0f});
-	registry->AddComponent(gameEntity, CircleColliderComponent{ 50.0f, {0,0} });
-    registry->AddComponent(ent2, TransformComponent{ {100, 100}, {1, 1}, 30 });
-    registry->AddComponent(ent2, SpriteComponent{ "assets/textures/checker.png", LoadTexture("assets/textures/checker.png") });
-    registry->AddComponent(ent2, SpriteAnimationComponent{ 8,8,0,0,0.1f });
-	registry->AddComponent(ent2, VelocityComponent{ {0, 0} });
-	registry->AddComponent(ent2, RigidPhysicsComponent{ 1.0f,0,1.0f,1.0f,true });
-    registry->AddComponent(ent2, BoxColliderComponent{ {250.0f,250.f}, {0,0} });
-    
+    const int TOTAL_ENTITIES = 2500; 
+    const float WORLD_WIDTH = 1200.0f;
+    const float WORLD_HEIGHT = 800.0f;
+
+    Entity floor = registry->CreateEntity();
+    registry->AddComponent(floor, TransformComponent{ {WORLD_WIDTH / 2, WORLD_HEIGHT - 20}, {1, 1}, 0 });
+    registry->AddComponent(floor, VelocityComponent{ {0, 0} });
+    registry->AddComponent(floor, RigidPhysicsComponent{ 1.0f, 0.2f, 0.0f, 1.0f, true });
+    registry->AddComponent(floor, BoxColliderComponent{ {WORLD_WIDTH, 40.0f}, {0,0}, true });
+
+    for (int i = 0; i < 10; i++) {
+        Entity peg = registry->CreateEntity();
+        float x = (WORLD_WIDTH / 10) * i + 50;
+        float y = 300 + (i % 2 * 100);
+
+        registry->AddComponent(peg, TransformComponent{ {x, y}, {1, 1}, 0 });
+        registry->AddComponent(peg, VelocityComponent{ {0, 0} });
+        registry->AddComponent(peg, RigidPhysicsComponent{ 1.0f, 0.5f, 0.0f, 1.0f, true });
+
+        if (i % 2 == 0) {
+            registry->AddComponent(peg, CircleColliderComponent{ 20.0f, {0,0}, true });
+        }
+        else {
+            registry->AddComponent(peg, BoxColliderComponent{ {60.0f, 20.0f}, {0,0}, true });
+        }
+    }
+
+    for (int i = 0; i < TOTAL_ENTITIES; i++) {
+        Entity e = registry->CreateEntity();
+
+        float rx = (float)GetRandomValue(100, (int)WORLD_WIDTH - 100);
+        float ry = (float)GetRandomValue(-1000, -50);
+
+        registry->AddComponent(e, TransformComponent{ {rx, ry}, {1, 1}, 0 });
+        registry->AddComponent(e, VelocityComponent{ {(float)GetRandomValue(-20, 20), 0} });
+
+        float mass = (float)GetRandomValue(1, 5);
+        float bounce = (float)GetRandomValue(2, 8) / 10.0f;
+        registry->AddComponent(e, RigidPhysicsComponent{ mass, bounce, 1.0f, 1.0f, false });
+
+        if (GetRandomValue(0, 1) == 0) {
+            float radius = (float)GetRandomValue(10, 25);
+            registry->AddComponent(e, CircleColliderComponent{ radius, {0,0}, true });
+        }
+        else {
+            float size = (float)GetRandomValue(20, 40);
+            registry->AddComponent(e, BoxColliderComponent{ {size, size}, {0,0}, true });
+        }
+    }
     editorAssets = AssetScanner::Scan("assets");
     ScanThemes();
 
@@ -224,7 +254,7 @@ void Engine::Update() {
 
             physicsSystem.StartFrame(*registry);
 
-			physicsSystem.UpdatePhysics(0.03f,*registry,physicsGrid);
+			physicsSystem.UpdatePhysics(0.01f,*registry,physicsGrid);
 
             physicsSystem.SyncPoint(*registry);
             if (scriptEngine) {

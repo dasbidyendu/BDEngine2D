@@ -199,7 +199,7 @@ namespace DebugSystem {
 
                     Color debugColor = col.isColliding ? RED : GREEN;
 
-                    DrawRectangleLinesEx({ topLeft.x, topLeft.y, col.size.x, col.size.y }, 1.0f, debugColor);
+                    DrawRectangleLinesEx({ topLeft.x, topLeft.y, col.size.x, col.size.y }, 3.0f, debugColor);
 
                     DrawCircleV(center, 2.0f, debugColor);
                 }

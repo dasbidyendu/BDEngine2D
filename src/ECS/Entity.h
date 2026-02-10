@@ -2,7 +2,7 @@
 #include <cstdint>
 
 
-const int MAX_ENTITIES = 200;
+const int MAX_ENTITIES = 5000;
 
 using Entity = unsigned int;
 
