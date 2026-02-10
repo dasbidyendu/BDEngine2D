@@ -185,6 +185,25 @@ namespace DebugSystem {
 					DrawCircleV(center, 2.0f, debugColor);
                 }
             }
+            if (reg.HasComponent(i, COMP_BOXCOLLIDER) && reg.HasComponent(i, COMP_TRANSFORM)) {
+                auto& col = reg.boxColliders[i];
+                if (col.debugDraw) {
+                    auto& transform = reg.transforms[i];
+
+                    Vector2 center = Vector2Add(transform.position, col.offset);
+
+                    Vector2 topLeft = {
+                        center.x - (col.size.x * 0.5f),
+                        center.y - (col.size.y * 0.5f)
+                    };
+
+                    Color debugColor = col.isColliding ? RED : GREEN;
+
+                    DrawRectangleLinesEx({ topLeft.x, topLeft.y, col.size.x, col.size.y }, 1.0f, debugColor);
+
+                    DrawCircleV(center, 2.0f, debugColor);
+                }
+            }
         }
         EndMode2D();
     }

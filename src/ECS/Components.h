@@ -92,3 +92,10 @@ struct CircleColliderComponent {
 	bool isColliding = false;
 	bool debugDraw = true;
 };
+
+struct BoxColliderComponent {
+    Vector2 size = { 32, 32 };
+    Vector2 offset = { 0, 0 };
+    bool isColliding = false;
+    bool debugDraw = true;
+};

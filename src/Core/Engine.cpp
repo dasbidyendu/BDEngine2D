@@ -49,8 +49,6 @@ Engine::Engine(int width, int height, const std::string& title)
     }
 
     editor = std::make_unique<Editor>(this);
-
-    isRunning = true;
 }
 
 Engine::~Engine() {
@@ -96,8 +94,8 @@ void Engine::LoadConfig() {
 void Engine::SaveConfig() {
     std::ofstream file("EditorConfig.ini");
     if (file.is_open()) {
-        file << "ScreenWidth=" << GetScreenWidth() << "\n";
-        file << "ScreenHeight=" << GetScreenHeight() << "\n";
+        file << "ScreenWidth=" << screenWidth << "\n";
+        file << "ScreenHeight=" << screenHeight << "\n";
         file << "LastTheme=" << lastThemePath << "\n";
         file << "LastFont=" << lastFontPath << "\n";
         file << "ShowGrid=" << (showGrid ? "true" : "false") << "\n";
@@ -117,21 +115,23 @@ void Engine::Run() {
 void Engine::InitGame() {
     Entity gameEntity = registry->CreateEntity();
 	Entity ent2 = registry->CreateEntity();
+    
 	/*ScriptComponent sc;
-	sc.scriptPaths.push_back("assets/scripts/echo.lua");
+	sc.scriptPaths.push_back("assets/scripts/chess.lua");
 	registry->AddComponent(gameEntity, sc);*/
 	registry->AddComponent(gameEntity, TransformComponent{ {100, -100}, {1, 1}, 0 });
 	registry->AddComponent(gameEntity, SpriteComponent{ "assets/textures/checker.png", LoadTexture("assets/textures/checker.png") });
     registry->AddComponent(gameEntity, SpriteAnimationComponent{8,8,0,0,0.1f});
 	registry->AddComponent(gameEntity, VelocityComponent{ {0, 0} });
-	registry->AddComponent(gameEntity, RigidPhysicsComponent{1.0f,0,0,1.0f});
+	registry->AddComponent(gameEntity, RigidPhysicsComponent{1.0f,0,1.0f,1.0f});
 	registry->AddComponent(gameEntity, CircleColliderComponent{ 50.0f, {0,0} });
-    registry->AddComponent(ent2, TransformComponent{ {100, 100}, {1, 1}, 0 });
+    registry->AddComponent(ent2, TransformComponent{ {100, 100}, {1, 1}, 30 });
     registry->AddComponent(ent2, SpriteComponent{ "assets/textures/checker.png", LoadTexture("assets/textures/checker.png") });
     registry->AddComponent(ent2, SpriteAnimationComponent{ 8,8,0,0,0.1f });
 	registry->AddComponent(ent2, VelocityComponent{ {0, 0} });
-	registry->AddComponent(ent2, RigidPhysicsComponent{ 1.0f,0,0,1.0f,true });
-	registry->AddComponent(ent2, CircleColliderComponent{ 50.0f, {0,0} });
+	registry->AddComponent(ent2, RigidPhysicsComponent{ 1.0f,0,1.0f,1.0f,true });
+    registry->AddComponent(ent2, BoxColliderComponent{ {250.0f,250.f}, {0,0} });
+    
     editorAssets = AssetScanner::Scan("assets");
     ScanThemes();
 
