@@ -137,7 +137,7 @@ public:
 	ThreadPool pool{ std::thread::hardware_concurrency() };
 
 	void StartFrame(Registry& reg) {
-		for (Entity e = 0; e < MAX_ENTITIES; e++) {
+		for (Entity e : reg.activeEntities) {
 			if (reg.HasComponent(e, COMP_TRANSFORM)) {
 				nextStates[e].position = reg.transforms[e].position;
 				if (reg.HasComponent(e, COMP_VELOCITY))
@@ -150,7 +150,7 @@ public:
 
 	void SyncPoint(Registry& reg) {
 
-		for (Entity e = 0; e < MAX_ENTITIES; e++) {
+		for (Entity e : reg.activeEntities) {
 			if (reg.HasComponent(e, COMP_TRANSFORM)) {
 				reg.transforms[e].position = nextStates[e].position;
 				if (reg.HasComponent(e, COMP_VELOCITY))

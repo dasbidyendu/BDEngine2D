@@ -228,7 +228,7 @@ void Engine::Update() {
 
             physicsSystem.SyncPoint(*registry);
             if (scriptEngine) {
-                for (Entity i = 0; i < MAX_ENTITIES; i++) {
+                for (Entity i : registry->activeEntities) {
                     if (registry->HasComponent(i, COMP_SCRIPT)) {
                         auto& script = registry->scripts[i];
                         for (const std::string& path : script.scriptPaths) {
