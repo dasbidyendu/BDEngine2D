@@ -182,7 +182,6 @@ public:
 		Vector2 correction = Vector2Scale(normal, penetration / 2.0f);
 		if (!staticA) nextStates[a].position = Vector2Subtract(nextStates[a].position, correction);
 		if (!staticB) nextStates[b].position = Vector2Add(nextStates[b].position, correction);
-
 		if (reg.HasComponent(a, COMP_RIGIDPHYSICS) && reg.HasComponent(b, COMP_RIGIDPHYSICS)) {
 			auto& rbA = reg.rigidPhysicsComponents[a];
 			auto& rbB = reg.rigidPhysicsComponents[b];
@@ -311,7 +310,7 @@ public:
 		return false;
 	}
 	void UpdatePhysics(float dt, Registry& reg, SpatialHashGrid& grid) {
-		for (Entity e = 0; e < MAX_ENTITIES; e++) {
+		for (Entity e : reg.activeEntities) {
 			if (reg.HasComponent(e, COMP_CIRCLECOLLIDER))
 				reg.circleColliders[e].isColliding = false;
 			if (reg.HasComponent(e, COMP_BOXCOLLIDER))
@@ -320,8 +319,11 @@ public:
 
 		grid.Clear();
 
-		for (Entity e = 0; e < MAX_ENTITIES; e++) {
-			if (reg.HasComponent(e, COMP_TRANSFORM) && reg.HasComponent(e, COMP_VELOCITY)) {
+		for (Entity e : reg.activeEntities) {
+			std::bitset<COMP_COUNT> physicsMask;
+			physicsMask.set(COMP_TRANSFORM);
+			physicsMask.set(COMP_VELOCITY);
+			if (reg.HasComponents(e,physicsMask)) {
 				nextStates[e].position = Vector2Add(nextStates[e].position, Vector2Scale(nextStates[e].velocity, dt));
 
 				if (reg.HasComponent(e, COMP_RIGIDPHYSICS)) {
