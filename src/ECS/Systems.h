@@ -10,7 +10,7 @@ class Engine;
 
 namespace MovementSystem {
     inline void Update(Registry& reg, float dt) {
-        for (Entity i = 0; i < MAX_ENTITIES; i++) {
+        for (Entity i :reg.activeEntities) {
             if (reg.HasComponent(i, COMP_TRANSFORM) && reg.HasComponent(i, COMP_VELOCITY)) {
                 reg.transforms[i].position.x += reg.velocities[i].speed.x * dt;
                 reg.transforms[i].position.y += reg.velocities[i].speed.y * dt;
@@ -21,7 +21,7 @@ namespace MovementSystem {
 
 namespace AnimationSystem {
     inline void Update(Registry& reg, float dt) {
-        for (Entity i = 0; i < MAX_ENTITIES; i++) {
+        for (Entity i :reg.activeEntities){
             if (reg.HasComponent(i, COMP_SPRITE_ANIMATION) && reg.HasComponent(i, COMP_SPRITE)) {
                 auto& anim = reg.spriteAnimations[i];
                 if (!anim.isPlaying) continue;
@@ -40,7 +40,7 @@ namespace AnimationSystem {
 
 namespace RenderSystem {
     inline void Draw(Registry& reg) {
-        for (Entity i = 0; i < MAX_ENTITIES; i++) {
+        for (Entity i :reg.activeEntities){
             if (reg.HasComponent(i, COMP_TRANSFORM) && reg.HasComponent(i, COMP_SPRITE)) {
                 auto& t = reg.transforms[i];
                 auto& s = reg.sprites[i];
@@ -87,7 +87,7 @@ namespace RenderSystem {
 
 namespace InputSystem {
     inline void Update(Registry& reg) {
-        for (Entity i = 0; i < MAX_ENTITIES; i++) {
+        for (Entity i : reg.activeEntities) {
             if (reg.HasComponent(i, COMP_INPUT)) {
                 auto& input = reg.inputComponents[i];
 
@@ -102,7 +102,7 @@ namespace InputSystem {
 
 namespace ControlSystem {
     inline void Update(Registry& reg) {
-        for (Entity i = 0; i < MAX_ENTITIES; i++) {
+        for (Entity i : reg.activeEntities) {
             if (reg.HasComponent(i, COMP_INPUT) && reg.HasComponent(i, COMP_VELOCITY)) {
                 auto& input = reg.inputComponents[i];
                 auto& vel = reg.velocities[i];
@@ -170,7 +170,7 @@ namespace DebugSystem {
 
     inline void PhysicsDebug(Registry& reg,Camera2D& cam) {
         BeginMode2D(cam);
-        for (Entity i = 0; i < MAX_ENTITIES; i++) {
+        for (Entity i : reg.activeEntities) {
             if (reg.HasComponent(i, COMP_CIRCLECOLLIDER) && reg.HasComponent(i,COMP_TRANSFORM)) {
 				auto& col = reg.circleColliders[i];
 

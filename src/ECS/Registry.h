@@ -25,8 +25,9 @@ public:
         if (nextEntity >= MAX_ENTITIES) {
             return MAX_ENTITIES;
         }
-
-        return nextEntity++;
+        Entity e = nextEntity++;
+		activeEntities.push_back(e);
+        return e;
     }
 
     void AddComponent(Entity entity, TransformComponent c) {
@@ -96,6 +97,7 @@ public:
         for (int i = 0; i < MAX_ENTITIES; i++) {
             entityMasks[i].reset();
         }
+		activeEntities.clear();
         nextEntity = 0;
     }
 
@@ -103,7 +105,7 @@ public:
         nextEntity = val;
     }
 
-
+    std::vector<Entity> activeEntities;
     std::vector<TransformComponent> transforms;
     std::vector<SpriteComponent> sprites;
     std::vector<VelocityComponent> velocities;

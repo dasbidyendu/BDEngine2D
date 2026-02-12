@@ -113,7 +113,7 @@ void Editor::Update()
             Vector2 worldMouse = GetScreenToWorld2D(GetMousePosition(), owner->GetCamera());
             owner->selectedEntity = -1;
 
-            for (Entity i = 0; i < MAX_ENTITIES; i++)
+            for (Entity i : owner->registry->activeEntities)
             {
                 if (owner->registry->HasComponent(i, COMP_TRANSFORM) && owner->registry->HasComponent(i, COMP_SPRITE))
                 {
@@ -641,7 +641,7 @@ namespace EditorSystem
     void DrawInspector(Entity e, Registry &reg, int screenWidth, int screenHeight, Engine *engine)
     {
 
-        if (e < 0 || e >= MAX_ENTITIES || reg.entityMasks[e].none())
+        if (e < 0 || e >= reg.activeEntities.size()-1 || reg.entityMasks[e].none())
             return;
         static Vector2 scrollOffset = {0, 0};
         static float contentHeight = 0;
