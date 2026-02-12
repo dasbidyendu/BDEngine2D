@@ -89,6 +89,10 @@ public:
         return entityMasks[entity].test(type);
     }
 
+    bool HasComponents(Entity e,const std::bitset<COMP_COUNT>& mask) {
+        return (entityMasks[e] & mask) == mask;
+    }
+
     int GetAliveEntityCount() const {
         return (int)nextEntity;
     }
