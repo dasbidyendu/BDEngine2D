@@ -113,7 +113,7 @@ void Engine::Run() {
 }
 
 void Engine::InitGame() {
-    const int TOTAL_ENTITIES = 2500; 
+    const int TOTAL_ENTITIES = 1000; 
     const float WORLD_WIDTH = 1200.0f;
     const float WORLD_HEIGHT = 800.0f;
 

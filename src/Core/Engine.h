@@ -87,5 +87,5 @@ private:
     void ScanFonts();
 
 	PhysicsSystem physicsSystem;
-    SpatialHashGrid physicsGrid{ 5000, 5000, 100 };
+    SpatialHashGrid physicsGrid{ 50000, 50000, 100 };
 };
