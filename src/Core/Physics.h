@@ -117,296 +117,262 @@ public:
 	}
 };
 
-struct PhysicsState {
-	Vector2 position;
-	Vector2 velocity;
-};
-
 class PhysicsSystem {
 public:
-	PhysicsState nextStates[MAX_ENTITIES];
+    struct Command {
+        enum Type { DESTROY, ADD_VELOCITY, SET_POS };
+        Type type;
+        Entity entity;
+        Vector2 value;
+    };
 
-	struct Command {
-		enum Type {DESTROY,ADD_VELOCITY,SET_POS};
-		Type type;
-		Entity entity;
-		Vector2 value; 
-	};
-	std::vector<Command> commandBuffer;
-	std::mutex commandMutex;
-	ThreadPool pool{ std::thread::hardware_concurrency() };
+    std::vector<Command> commandBuffer;
+    std::mutex commandMutex;
+    ThreadPool pool{ std::thread::hardware_concurrency() };
 
-	void StartFrame(Registry& reg) {
-		for (Entity e : reg.activeEntities) {
-			if (reg.HasComponent(e, COMP_TRANSFORM)) {
-				nextStates[e].position = reg.transforms[e].position;
-				if (reg.HasComponent(e, COMP_VELOCITY))
-					nextStates[e].velocity = reg.velocities[e].speed;
-				else
-					nextStates[e].velocity = { 0,0 };
-			}
-		}
-	}
+    void ProcessCommands(Registry& reg) {
+        std::lock_guard<std::mutex> lock(commandMutex);
+        for (auto& cmd : commandBuffer) {
+            if (cmd.type == Command::DESTROY) {
+                auto it = std::find(reg.activeEntities.begin(), reg.activeEntities.end(), cmd.entity);
+                if (it != reg.activeEntities.end()) {
+                    reg.entityMasks[cmd.entity].reset();
+                    *it = reg.activeEntities.back();
+                    reg.activeEntities.pop_back();
+                }
+            }
+            else if (cmd.type == Command::ADD_VELOCITY) {
+                if (reg.HasComponent(cmd.entity, COMP_VELOCITY)) {
+                    reg.velocities[cmd.entity].speed = Vector2Add(reg.velocities[cmd.entity].speed, cmd.value);
+                }
+            }
+            else if (cmd.type == Command::SET_POS) {
+                if (reg.HasComponent(cmd.entity, COMP_TRANSFORM)) {
+                    reg.transforms[cmd.entity].position = cmd.value;
+                }
+            }
+        }
+        commandBuffer.clear();
+    }
 
-	void SyncPoint(Registry& reg) {
+    void ResolveManifold(Entity a, Entity b, Vector2 normal, float penetration, Registry& reg) {
+        auto& transA = reg.transforms[a];
+        auto& transB = reg.transforms[b];
 
-		for (Entity e : reg.activeEntities) {
-			if (reg.HasComponent(e, COMP_TRANSFORM)) {
-				reg.transforms[e].position = nextStates[e].position;
-				if (reg.HasComponent(e, COMP_VELOCITY))
-					reg.velocities[e].speed = nextStates[e].velocity;
-			}
-		}
+        bool hasRBA = reg.HasComponent(a, COMP_RIGIDPHYSICS);
+        bool hasRBB = reg.HasComponent(b, COMP_RIGIDPHYSICS);
 
-		for (auto& cmd:commandBuffer) {
-			if (cmd.type == Command::DESTROY) {
-				reg.entityMasks[cmd.entity].reset();
-			}
-			else if(cmd.type==Command::ADD_VELOCITY) {
-				if (reg.HasComponent(cmd.entity, COMP_VELOCITY)) {
-					nextStates[cmd.entity].velocity = Vector2Add(nextStates[cmd.entity].velocity, cmd.value);
-				}
-			}
-			else if (cmd.type == Command::SET_POS) {
-				if (reg.HasComponent(cmd.entity, COMP_TRANSFORM)) {
-					nextStates[cmd.entity].position = cmd.value;
-				}
-			}
-		}
-		commandBuffer.clear();
-	}
-	void ResolveManifold(Entity a, Entity b, Vector2 normal, float penetration, Registry& reg) {
-		bool staticA = reg.HasComponent(a, COMP_RIGIDPHYSICS) && reg.rigidPhysicsComponents[a].isStatic;
-		bool staticB = reg.HasComponent(b, COMP_RIGIDPHYSICS) && reg.rigidPhysicsComponents[b].isStatic;
+        bool staticA = hasRBA && reg.rigidPhysicsComponents[a].isStatic;
+        bool staticB = hasRBB && reg.rigidPhysicsComponents[b].isStatic;
 
-		Vector2 correction = Vector2Scale(normal, penetration / 2.0f);
-		if (!staticA) nextStates[a].position = Vector2Subtract(nextStates[a].position, correction);
-		if (!staticB) nextStates[b].position = Vector2Add(nextStates[b].position, correction);
-		if (reg.HasComponent(a, COMP_RIGIDPHYSICS) && reg.HasComponent(b, COMP_RIGIDPHYSICS)) {
-			auto& rbA = reg.rigidPhysicsComponents[a];
-			auto& rbB = reg.rigidPhysicsComponents[b];
+        Vector2 correction = Vector2Scale(normal, penetration / 2.0f);
+        if (!staticA) transA.position = Vector2Subtract(transA.position, correction);
+        if (!staticB) transB.position = Vector2Add(transB.position, correction);
 
-			Vector2 rv = Vector2Subtract(nextStates[b].velocity, nextStates[a].velocity);
+        if (hasRBA && hasRBB) {
+            auto& rbA = reg.rigidPhysicsComponents[a];
+            auto& rbB = reg.rigidPhysicsComponents[b];
+            auto& velA = reg.velocities[a].speed;
+            auto& velB = reg.velocities[b].speed;
 
-			float velAlongNormal = Vector2DotProduct(rv, normal);
+            Vector2 rv = Vector2Subtract(velB, velA);
+            float velAlongNormal = Vector2DotProduct(rv, normal);
 
-			if (velAlongNormal < 0) {
-				float e = fminf(rbA.restitution, rbB.restitution);
-				float j = -(1 + e) * velAlongNormal;
+            if (velAlongNormal < 0) {
+                float e = fminf(rbA.restitution, rbB.restitution);
+                float j = -(1 + e) * velAlongNormal;
 
-				float invMassA = (rbA.mass > 0 && !staticA) ? 1.0f / rbA.mass : 0;
-				float invMassB = (rbB.mass > 0 && !staticB) ? 1.0f / rbB.mass : 0;
+                float invMassA = (rbA.mass > 0 && !staticA) ? 1.0f / rbA.mass : 0;
+                float invMassB = (rbB.mass > 0 && !staticB) ? 1.0f / rbB.mass : 0;
 
-				if (invMassA + invMassB > 0) {
-					j /= (invMassA + invMassB);
-					Vector2 impulse = Vector2Scale(normal, j);
+                if (invMassA + invMassB > 0) {
+                    j /= (invMassA + invMassB);
+                    Vector2 impulse = Vector2Scale(normal, j);
 
-					if (!staticA) {
-						nextStates[a].velocity = Vector2Subtract(nextStates[a].velocity, Vector2Scale(impulse, invMassA));
-					}
-					if (!staticB) {
-						nextStates[b].velocity = Vector2Add(nextStates[b].velocity, Vector2Scale(impulse, invMassB));
-					}
-				}
-			}
-		}
-	}
-	bool CheckCircleCollision(Entity a, Entity b, Registry& reg) {
-		auto& posA = Vector2Add(nextStates[a].position,reg.circleColliders[a].offset);
-		auto& posB = Vector2Add(nextStates[b].position,reg.circleColliders[b].offset);
-		auto& colA = reg.circleColliders[a];
-		auto& colB = reg.circleColliders[b];
+                    if (!staticA) velA = Vector2Subtract(velA, Vector2Scale(impulse, invMassA));
+                    if (!staticB) velB = Vector2Add(velB, Vector2Scale(impulse, invMassB));
+                }
+            }
+        }
+    }
 
-		float dist = Vector2Distance(posA, posB);
-		float radiusSum = colA.radius + colB.radius;
-		float overlap = radiusSum - dist;
+    bool CheckCircleCollision(Entity a, Entity b, Registry& reg) {
+        Vector2 posA = Vector2Add(reg.transforms[a].position, reg.circleColliders[a].offset);
+        Vector2 posB = Vector2Add(reg.transforms[b].position, reg.circleColliders[b].offset);
+        float dist = Vector2Distance(posA, posB);
+        float radiusSum = reg.circleColliders[a].radius + reg.circleColliders[b].radius;
 
-		if (overlap > 0) {
-			Vector2 collisionNormal;
-			if (dist > 0) {
-				collisionNormal = Vector2Scale(Vector2Subtract(posB, posA), 1.0f / dist);
-			}
-			else {
-				collisionNormal = { 0, -1 };
-			}
+        if (radiusSum > dist) {
+            Vector2 normal = (dist > 0) ? Vector2Scale(Vector2Subtract(posB, posA), 1.0f / dist) : Vector2{ 0, -1 };
+            ResolveManifold(a, b, normal, radiusSum - dist, reg);
+            return true;
+        }
+        return false;
+    }
+    bool CheckBoxCollision(Entity a, Entity b, Registry& reg) {
+        Vector2 posA = Vector2Add(reg.transforms[a].position, reg.boxColliders[a].offset);
+        Vector2 posB = Vector2Add(reg.transforms[b].position, reg.boxColliders[b].offset);
 
-			Vector2 correction = Vector2Scale(collisionNormal, overlap / 2.0f);
+        auto& boxA = reg.boxColliders[a];
+        auto& boxB = reg.boxColliders[b];
 
-			ResolveManifold(a, b, collisionNormal, overlap, reg);
-			return true;
-		}
-		return false;
-	}
-	bool CheckBoxCollision(Entity a, Entity b, Registry& reg) {
-		auto& posA = Vector2Add(nextStates[a].position, reg.boxColliders[a].offset);
-		auto& posB = Vector2Add(nextStates[b].position, reg.boxColliders[b].offset);
-		auto& boxA = reg.boxColliders[a];
-		auto& boxB = reg.boxColliders[b];
+        float hwa = boxA.size.x * 0.5f;
+        float hha = boxA.size.y * 0.5f;
+        float hwb = boxB.size.x * 0.5f;
+        float hhb = boxB.size.y * 0.5f;
 
-		float hwa = boxA.size.x * 0.5f;
-		float hha = boxA.size.y * 0.5f;
-		float hwb = boxB.size.x * 0.5f;
-		float hhb = boxB.size.y * 0.5f;
+        float dx = posB.x - posA.x;
+        float dy = posB.y - posA.y;
 
-		float dx = posB.x - posA.x;
-		float dy = posB.y - posA.y;
+        float overlapX = hwa + hwb - fabsf(dx);
+        float overlapY = hha + hhb - fabsf(dy);
 
-		float overlapX = hwa + hwb - fabsf(dx);
-		float overlapY = hha + hhb - fabsf(dy);
+        if (overlapX > 0 && overlapY > 0) {
+            Vector2 normal = { 0, 0 };
+            float penetration = 0;
 
-		if (overlapX > 0 && overlapY > 0) {
-			Vector2 normal = { 0 , 0 };
-			float penetration = 0;
+            if (overlapX < overlapY) {
+                normal = { (dx > 0) ? 1.0f : -1.0f, 0 };
+                penetration = overlapX;
+            }
+            else {
+                normal = { 0, (dy > 0) ? 1.0f : -1.0f };
+                penetration = overlapY;
+            }
 
-			if (overlapX < overlapY) {
-				normal = { (dx > 0) ? 1.0f : -1.0f, 0 };
-				penetration = overlapX;
-			}
-			else {
-				normal = { 0,(dy > 0) ? 1.0f : -1.0f };
-				penetration = overlapY;
-			}
+            ResolveManifold(a, b, normal, penetration, reg);
+            return true;
+        }
+        return false;
+    }
 
-			ResolveManifold(a, b, normal, penetration, reg);
-			return true;
-		}
-		return false;
-	}
+    bool CheckCircleBoxCollision(Entity circle, Entity box, Registry& reg) {
+        Vector2 cPos = Vector2Add(reg.transforms[circle].position, reg.circleColliders[circle].offset);
+        Vector2 bPos = Vector2Add(reg.transforms[box].position, reg.boxColliders[box].offset);
 
-	bool CheckCircleBoxCollision(Entity circle, Entity box, Registry& reg) {
-		auto& cPos = Vector2Add(nextStates[circle].position, reg.circleColliders[circle].offset);
-		auto& bPos = Vector2Add(nextStates[box].position, reg.boxColliders[box].offset);
-		auto& circ = reg.circleColliders[circle];
-		auto& bo = reg.boxColliders[box];
+        auto& circ = reg.circleColliders[circle];
+        auto& bo = reg.boxColliders[box];
 
-		float closestX = Clamp(cPos.x, bPos.x - bo.size.x * 0.5f, bPos.x + bo.size.x * 0.5f);
-		float closestY = Clamp(cPos.y, bPos.y - bo.size.y * 0.5f, bPos.y + bo.size.y * 0.5f);
+        float closestX = Clamp(cPos.x, bPos.x - bo.size.x * 0.5f, bPos.x + bo.size.x * 0.5f);
+        float closestY = Clamp(cPos.y, bPos.y - bo.size.y * 0.5f, bPos.y + bo.size.y * 0.5f);
 
-		float distance = Vector2Distance(cPos, { closestX, closestY });
+        float distance = Vector2Distance(cPos, { closestX, closestY });
 
-		if (distance < circ.radius) {
-			Vector2 normal;
+        if (distance < circ.radius) {
+            Vector2 normal;
 
-			if (distance > 0) {
-				normal = Vector2Normalize(Vector2Subtract({ closestX, closestY }, cPos));
-			}
-			else {
-				float dx = cPos.x - bPos.x;
-				float dy = cPos.y - bPos.y;
-				float overlapX = (bo.size.x * 0.5f) - fabsf(dx);
-				float overlapY = (bo.size.y * 0.5f) - fabsf(dy);
+            if (distance > 0) {
+                normal = Vector2Normalize(Vector2Subtract({ closestX, closestY }, cPos));
+            }
+            else {
+                float dx = cPos.x - bPos.x;
+                float dy = cPos.y - bPos.y;
+                float overlapX = (bo.size.x * 0.5f) - fabsf(dx);
+                float overlapY = (bo.size.y * 0.5f) - fabsf(dy);
 
-				if (overlapX < overlapY)
-					normal = { (dx > 0) ? 1.0f : -1.0f, 0 };
-				else
-					normal = { 0, (dy > 0) ? 1.0f : -1.0f };
-			}
+                if (overlapX < overlapY)
+                    normal = { (dx > 0) ? 1.0f : -1.0f, 0 };
+                else
+                    normal = { 0, (dy > 0) ? 1.0f : -1.0f };
+            }
 
-			float penetration = circ.radius - distance;
+            float penetration = circ.radius - distance;
 
-			ResolveManifold(circle, box, normal, penetration, reg);
-			return true;
-		}
-		return false;
-	}
-	void UpdatePhysics(float dt, Registry& reg, SpatialHashGrid& grid) {
-		for (Entity e : reg.activeEntities) {
-			if (reg.HasComponent(e, COMP_CIRCLECOLLIDER))
-				reg.circleColliders[e].isColliding = false;
-			if (reg.HasComponent(e, COMP_BOXCOLLIDER))
-				reg.boxColliders[e].isColliding = false;
-		}
+            ResolveManifold(circle, box, normal, penetration, reg);
+            return true;
+        }
+        return false;
+    }
+    void UpdatePhysics(float dt, Registry& reg, SpatialHashGrid& grid) {
+        std::bitset<COMP_COUNT> physMask;
+        physMask.set(COMP_TRANSFORM);
+        physMask.set(COMP_VELOCITY);
 
-		grid.Clear();
+        grid.Clear();
 
-		for (Entity e : reg.activeEntities) {
-			std::bitset<COMP_COUNT> physicsMask;
-			physicsMask.set(COMP_TRANSFORM);
-			physicsMask.set(COMP_VELOCITY);
-			if (reg.HasComponents(e,physicsMask)) {
-				nextStates[e].position = Vector2Add(nextStates[e].position, Vector2Scale(nextStates[e].velocity, dt));
+        for (Entity e : reg.activeEntities) {
+            if (reg.HasComponent(e, COMP_CIRCLECOLLIDER)) reg.circleColliders[e].isColliding = false;
+            if (reg.HasComponent(e, COMP_BOXCOLLIDER)) reg.boxColliders[e].isColliding = false;
 
-				if (reg.HasComponent(e, COMP_RIGIDPHYSICS)) {
-					auto& rb = reg.rigidPhysicsComponents[e];
-					if (rb.affectedByGravity && !rb.isStatic) {
-						nextStates[e].velocity.y += 9.81f * rb.gravityScale * dt;
-					}
+            if (reg.HasComponents(e, physMask)) {
+                auto& pos = reg.transforms[e].position;
+                auto& vel = reg.velocities[e].speed;
 
-					if (reg.HasComponent(e, COMP_CIRCLECOLLIDER)) {
-						float r = reg.circleColliders[e].radius;
-						grid.AddEntity(e, nextStates[e].position, r);
-					}
-					else if (reg.HasComponent(e, COMP_BOXCOLLIDER)) {
-						Vector2 sz = reg.boxColliders[e].size;
-						float maxDim = (sz.x > sz.y) ? sz.x : sz.y;
-						grid.AddEntity(e, nextStates[e].position, maxDim * 0.5f);
-					}
-				}
-			}
-		}
+                pos = Vector2Add(pos, Vector2Scale(vel, dt));
 
-		int totalCells = (int)grid.cells.size();
-		int workerCount = pool.GetWorkerCount();
-		int batchSize = (totalCells + workerCount - 1) / workerCount;
+                if (reg.HasComponent(e, COMP_RIGIDPHYSICS)) {
+                    auto& rb = reg.rigidPhysicsComponents[e];
+                    if (rb.affectedByGravity && !rb.isStatic) {
+                        vel.y += 9.81f * rb.gravityScale * dt;
+                    }
 
-		std::atomic<int> tasksRemaining(0);
+                    if (reg.HasComponent(e, COMP_CIRCLECOLLIDER))
+                        grid.AddEntity(e, pos, reg.circleColliders[e].radius);
+                    else if (reg.HasComponent(e, COMP_BOXCOLLIDER))
+                        grid.AddEntity(e, pos, reg.boxColliders[e].size.x * 0.5f);
+                }
+            }
+        }
 
-		for (int i = 0; i < totalCells; i += batchSize) {
-			int end = std::min(i + batchSize, totalCells);
-			tasksRemaining++;
+        int totalCells = (int)grid.cells.size();
+        int workerCount = pool.GetWorkerCount();
+        int batchSize = (totalCells + workerCount - 1) / workerCount;
+        std::atomic<int> tasksRemaining(0);
 
-			pool.Enqueue([this, i, end, &reg, &grid, &tasksRemaining]() {
-				for (int c = i; c < end; c++) {
-					auto& cell = grid.cells[c];
-					if (cell.entities.size() < 2) continue;
+        for (int i = 0; i < totalCells; i += batchSize) {
+            int end = std::min(i + batchSize, totalCells);
+            tasksRemaining++;
 
-					for (size_t a_idx = 0; a_idx < cell.entities.size(); a_idx++) {
-						for (size_t b_idx = a_idx + 1; b_idx < cell.entities.size(); b_idx++) {
-							Entity a = cell.entities[a_idx];
-							Entity b = cell.entities[b_idx];
+            pool.Enqueue([this, i, end, &reg, &grid, &tasksRemaining]() {
+                for (int c = i; c < end; c++) {
+                    auto& cell = grid.cells[c];
+                    if (cell.entities.size() < 2) continue;
 
-							std::lock_guard<std::mutex> lock(commandMutex);
+                    for (size_t a_idx = 0; a_idx < cell.entities.size(); a_idx++) {
+                        for (size_t b_idx = a_idx + 1; b_idx < cell.entities.size(); b_idx++) {
+                            Entity a = cell.entities[a_idx];
+                            Entity b = cell.entities[b_idx];
 
-							bool hasCircA = reg.HasComponent(a, COMP_CIRCLECOLLIDER);
-							bool hasCircB = reg.HasComponent(b, COMP_CIRCLECOLLIDER);
-							bool hasBoxA = reg.HasComponent(a, COMP_BOXCOLLIDER);
-							bool hasBoxB = reg.HasComponent(b, COMP_BOXCOLLIDER);
+                            std::lock_guard<std::mutex> lock(commandMutex);
 
-							if (hasCircA && hasCircB) {
-								if (CheckCircleCollision(a, b, reg)) {
-									reg.circleColliders[a].isColliding = true;
-									reg.circleColliders[b].isColliding = true;
-								}
-							}
-							else if (hasBoxA && hasBoxB) {
-								if (CheckBoxCollision(a, b, reg)) {
-									reg.boxColliders[a].isColliding = true;
-									reg.boxColliders[b].isColliding = true;
-								}
-							}
-							else if (hasCircA && hasBoxB) {
-								if (CheckCircleBoxCollision(a, b, reg)) {
-									reg.circleColliders[a].isColliding = true;
-									reg.boxColliders[b].isColliding = true;
-								}
-							}
-							else if (hasBoxA && hasCircB) {
-								if (CheckCircleBoxCollision(b, a, reg)) {
-									reg.boxColliders[a].isColliding = true;
-									reg.circleColliders[b].isColliding = true;
-								}
-							}
-						}
-					}
-				}
-				tasksRemaining--;
-				});
-		}
+                            bool hasCircA = reg.HasComponent(a, COMP_CIRCLECOLLIDER);
+                            bool hasCircB = reg.HasComponent(b, COMP_CIRCLECOLLIDER);
+                            bool hasBoxA = reg.HasComponent(a, COMP_BOXCOLLIDER);
+                            bool hasBoxB = reg.HasComponent(b, COMP_BOXCOLLIDER);
 
-		while (tasksRemaining > 0) {
-			std::this_thread::yield();
-		}
-	}
+                            if (hasCircA && hasCircB) {
+                                if (CheckCircleCollision(a, b, reg)) {
+                                    reg.circleColliders[a].isColliding = true;
+                                    reg.circleColliders[b].isColliding = true;
+                                }
+                            }
+                            else if (hasBoxA && hasBoxB) {
+                                if (CheckBoxCollision(a, b, reg)) {
+                                    reg.boxColliders[a].isColliding = true;
+                                    reg.boxColliders[b].isColliding = true;
+                                }
+                            }
+                            else if (hasCircA && hasBoxB) {
+                                if (CheckCircleBoxCollision(a, b, reg)) {
+                                    reg.circleColliders[a].isColliding = true;
+                                    reg.boxColliders[b].isColliding = true;
+                                }
+                            }
+                            else if (hasBoxA && hasCircB) {
+                                if (CheckCircleBoxCollision(b, a, reg)) {
+                                    reg.boxColliders[a].isColliding = true;
+                                    reg.circleColliders[b].isColliding = true;
+                                }
+                            }
+                        }
+                    }
+                }
+                tasksRemaining--;
+                });
+        }
+
+        while (tasksRemaining > 0) std::this_thread::yield();
+
+        ProcessCommands(reg);
+    }
 };
-
-

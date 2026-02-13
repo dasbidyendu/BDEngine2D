@@ -883,7 +883,7 @@ namespace EditorSystem
             case 8:
             {
                 if (!reg.HasComponent(e, COMP_CIRCLECOLLIDER))
-                    reg.AddComponent(e, CircleColliderComponent{25.0f, {0, 0}, true});
+                    reg.AddComponent(e, CircleColliderComponent{ {0, 0},25.0f, true});
                 break;
             }
             }

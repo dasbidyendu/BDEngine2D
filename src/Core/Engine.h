@@ -88,4 +88,6 @@ private:
 
 	PhysicsSystem physicsSystem;
     SpatialHashGrid physicsGrid{ 2000, 2000, 100 };
+
+	float physicsTimeAccumulator = 0.0f;
 };

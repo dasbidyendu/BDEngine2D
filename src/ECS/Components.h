@@ -6,10 +6,11 @@
 #include "Entity.h"
 
 
-struct TransformComponent {
+struct alignas(16) TransformComponent {
     Vector2 position;
     Vector2 scale;
     float rotation;
+    float padding;
 };
 
 struct SpriteComponent {
@@ -20,8 +21,9 @@ struct SpriteComponent {
     bool flipX = false;
 };
 
-struct VelocityComponent {
+struct alignas(16) VelocityComponent {
     Vector2 speed;
+    float pad[2];
 };
 
 struct InputComponent {
@@ -77,7 +79,7 @@ struct SpriteAnimationComponent {
     bool isPlaying = true;
 };
 
-struct RigidPhysicsComponent {
+struct alignas(16) RigidPhysicsComponent {
     float mass = 1.0f;
 	float friction = 0.1f;
 	float restitution = 0.5f;
@@ -87,8 +89,8 @@ struct RigidPhysicsComponent {
 };
 
 struct CircleColliderComponent {
-    float radius = 16.0f;
     Vector2 offset = { 0, 0 };
+    float radius = 16.0f;
 	bool isColliding = false;
 	bool debugDraw = true;
 };

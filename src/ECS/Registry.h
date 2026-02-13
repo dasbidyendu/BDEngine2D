@@ -23,11 +23,24 @@ public:
 
     Entity CreateEntity() {
         if (nextEntity >= MAX_ENTITIES) {
-            return MAX_ENTITIES;
+            return -1;
         }
         Entity e = nextEntity++;
-		activeEntities.push_back(e);
+        activeEntities.push_back(e);
         return e;
+    }
+
+    void Registry::DestroyEntity(Entity entity) {
+        if (entity < 0 || entity >= MAX_ENTITIES) return;
+
+        entityMasks[entity].reset();
+
+        auto it = std::find(activeEntities.begin(), activeEntities.end(), entity);
+
+        if (it != activeEntities.end()) {
+            *it = activeEntities.back();
+            activeEntities.pop_back();
+        }
     }
 
     void AddComponent(Entity entity, TransformComponent c) {
