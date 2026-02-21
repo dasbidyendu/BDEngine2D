@@ -23,10 +23,6 @@ void Editor::Update() {
   Vector2 worldMousePos =
       GetScreenToWorld2D(relativeMousePos, owner->GetCamera());
 
-  bool mouseInSidebar = (mousePos.x < 250);
-  bool mouseInInspector = (mousePos.x > (GetScreenWidth() - 300));
-  bool mouseInUI = mouseInSidebar || mouseInInspector;
-
   ImGuiIO &io = ImGui::GetIO();
   if (io.WantCaptureMouse)
     return;
@@ -46,7 +42,7 @@ void Editor::Update() {
       }
     }
 
-    if (!mouseInUI && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+    if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
       bool uiClicked = false;
       for (int i = MAX_ENTITIES - 1; i >= 0; i--) {
         if (owner->registry->HasComponent(i, COMP_UI)) {
@@ -75,7 +71,7 @@ void Editor::Update() {
     }
   } else {
     if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON) && draggedAssetIndex != -1) {
-      if (!mouseInSidebar && !mouseInInspector) {
+      if (true) { // Replaced legacy coordinate check
         auto &asset = owner->editorAssets[draggedAssetIndex];
         if (asset.isTexture) {
           owner->assets.LoadTextureAsset(asset.name, asset.path);
@@ -95,64 +91,61 @@ void Editor::Update() {
               SpriteComponent{asset.name, tex, WHITE, {0.5f, 0.5f}, false});
         }
         draggedAssetIndex = -1;
-      } else if (mouseInSidebar) {
-        draggedAssetIndex = -1;
+        // Legacy sidebar check removed
       }
-    }
 
-    if (!mouseInUI && IsMouseButtonPressed(MOUSE_LEFT_BUTTON) &&
-        draggedAssetIndex == -1) {
-      Vector2 worldMouse =
-          GetScreenToWorld2D(GetMousePosition(), owner->GetCamera());
-      owner->selectedEntity = -1;
+      if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && draggedAssetIndex == -1) {
+        Vector2 worldMouse =
+            GetScreenToWorld2D(GetMousePosition(), owner->GetCamera());
+        owner->selectedEntity = -1;
 
-      for (Entity i : owner->registry->activeEntities) {
-        if (owner->registry->HasComponent(i, COMP_TRANSFORM) &&
-            owner->registry->HasComponent(i, COMP_SPRITE)) {
-          auto &t = owner->registry->transforms[i];
-          auto &s = owner->registry->sprites[i];
-          Rectangle bounds = {
-              t.position.x - (s.texture.width * t.scale.x * s.anchor.x),
-              t.position.y - (s.texture.height * t.scale.y * s.anchor.y),
-              (float)s.texture.width * t.scale.x,
-              (float)s.texture.height * t.scale.y};
+        for (Entity i : owner->registry->activeEntities) {
+          if (owner->registry->HasComponent(i, COMP_TRANSFORM) &&
+              owner->registry->HasComponent(i, COMP_SPRITE)) {
+            auto &t = owner->registry->transforms[i];
+            auto &s = owner->registry->sprites[i];
+            Rectangle bounds = {
+                t.position.x - (s.texture.width * t.scale.x * s.anchor.x),
+                t.position.y - (s.texture.height * t.scale.y * s.anchor.y),
+                (float)s.texture.width * t.scale.x,
+                (float)s.texture.height * t.scale.y};
 
-          if (CheckCollisionPointRec(worldMouse, bounds)) {
-            owner->selectedEntity = i;
-            break;
+            if (CheckCollisionPointRec(worldMouse, bounds)) {
+              owner->selectedEntity = i;
+              break;
+            }
           }
         }
       }
+
+      if (owner->selectedEntity != -1 && IsKeyPressed(KEY_DELETE)) {
+        owner->registry->entityMasks[owner->selectedEntity].reset();
+        owner->selectedEntity = -1;
+      }
     }
 
-    if (owner->selectedEntity != -1 && IsKeyPressed(KEY_DELETE)) {
-      owner->registry->entityMasks[owner->selectedEntity].reset();
-      owner->selectedEntity = -1;
+    if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON))
+      draggedAssetIndex = -1;
+
+    static float refreshTimer = 0;
+    refreshTimer += GetFrameTime();
+    if (refreshTimer > 2.0f) {
+      if (fs::exists(currentBrowserPath)) {
+        owner->editorAssets = AssetScanner::Scan(currentBrowserPath);
+      }
+      refreshTimer = 0;
     }
-  }
 
-  if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON))
-    draggedAssetIndex = -1;
-
-  static float refreshTimer = 0;
-  refreshTimer += GetFrameTime();
-  if (refreshTimer > 2.0f) {
-    if (fs::exists(currentBrowserPath)) {
+    if (currentBrowserPath != lastPath) {
+      for (auto &asset : owner->editorAssets) {
+        if (asset.preview.id != 0)
+          UnloadTexture(asset.preview);
+      }
       owner->editorAssets = AssetScanner::Scan(currentBrowserPath);
+      lastPath = currentBrowserPath;
     }
-    refreshTimer = 0;
-  }
-
-  if (currentBrowserPath != lastPath) {
-    for (auto &asset : owner->editorAssets) {
-      if (asset.preview.id != 0)
-        UnloadTexture(asset.preview);
-    }
-    owner->editorAssets = AssetScanner::Scan(currentBrowserPath);
-    lastPath = currentBrowserPath;
   }
 }
-
 void Editor::DrawSceneView() {
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
   if (ImGui::Begin("Scene View")) {
@@ -175,30 +168,84 @@ void Editor::DrawSceneView() {
   ImGui::End();
   ImGui::PopStyleVar();
 }
+
+void Editor::DrawTransportBar() {
+  ImGuiViewport *viewport = ImGui::GetMainViewport();
+  // Center it at the top
+  ImGui::SetNextWindowPos(
+      ImVec2(viewport->Pos.x + viewport->Size.x * 0.5f, viewport->Pos.y + 25),
+      ImGuiCond_Always, ImVec2(0.5f, 0.0f));
+  ImGui::SetNextWindowSize(ImVec2(120, 32));
+
+  ImGuiWindowFlags flags =
+      ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoDocking |
+      ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings |
+      ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav;
+
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(4, 4));
+  ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.1f, 0.1f, 0.1f, 0.7f));
+
+  if (ImGui::Begin("##TransportBar", nullptr, flags)) {
+    float btnSize = 24;
+
+    // Play Button
+    bool isPlaying = (owner->playState == Engine::Playing);
+    if (isPlaying)
+      ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.7f, 0.2f, 1.0f));
+    if (ImGui::Button(ICON_FA_PLAY, ImVec2(btnSize, btnSize))) {
+      if (owner->playState == Engine::Stopped) {
+        // SceneManager::SaveScene("temp_play.bds", *owner->registry);
+        owner->playState = Engine::Playing;
+        owner->isEditorMode = false;
+      } else if (owner->playState == Engine::Paused) {
+        owner->playState = Engine::Playing;
+        owner->isEditorMode = false;
+      }
+    }
+    if (isPlaying)
+      ImGui::PopStyleColor();
+
+    ImGui::SameLine();
+
+    // Pause Button
+    bool isPaused = (owner->playState == Engine::Paused);
+    if (isPaused)
+      ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.7f, 0.7f, 0.2f, 1.0f));
+    if (ImGui::Button(ICON_FA_PAUSE, ImVec2(btnSize, btnSize))) {
+      if (owner->playState == Engine::Playing) {
+        owner->playState = Engine::Paused;
+        owner->isEditorMode = true;
+      }
+    }
+    if (isPaused)
+      ImGui::PopStyleColor();
+
+    ImGui::SameLine();
+
+    // Stop Button
+    if (ImGui::Button(ICON_FA_STOP, ImVec2(btnSize, btnSize))) {
+      if (owner->playState != Engine::Stopped) {
+        // SceneManager::LoadScene("temp_play.bds", *owner->registry, owner);
+        owner->playState = Engine::Stopped;
+        owner->isEditorMode = true;
+      }
+    }
+  }
+  ImGui::End();
+  ImGui::PopStyleColor();
+  ImGui::PopStyleVar(2);
+}
+
 void Editor::Render() {
-
-  // 1. Setup the Docking Hub (The "Master" container)
-  ImGuiViewport *vp = ImGui::GetMainViewport();
-  ImGui::SetNextWindowPos(vp->WorkPos);
-  ImGui::SetNextWindowSize(vp->WorkSize);
-  ImGui::SetNextWindowViewport(vp->ID);
-
-  ImGuiWindowFlags hostFlags =
-      ImGuiWindowFlags_MenuBar | ImGuiWindowFlags_NoDocking |
-      ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse |
-      ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
-      ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
-
-  ImGui::Begin("BDEngine2D_DockManager", nullptr, hostFlags);
-
+  DrawTransportBar();
   DrawMenuBar(); // Handles its own BeginMenuBar/EndMenuBar
 
-  ImGui::End(); // End Master Host
-
-  // 2. VIEWPORT WINDOW (The Game World)
+  // 2. SCENE VIEW WINDOW
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
-  if (ImGui::Begin("Scene View")) {
+  if (ImGui::Begin("Scene")) {
     ImVec2 size = ImGui::GetContentRegionAvail();
+    // ... (existing Scene View logic uses owner->viewportTarget)
 
     // Dynamic Resolution Matching
     if (size.x != owner->viewportTarget.texture.width ||
@@ -805,7 +852,8 @@ void DrawInspector(Entity e, Registry &reg, int screenWidth, int screenHeight,
     if (GuiButton(scriptBox, "+ ADD SCRIPT")) {
       reg.AddComponent(e, ScriptComponent{{}, false});
     }
-    // Logic to drop a script onto an entity that DOESN'T have the component yet
+    // Logic to drop a script onto an entity that DOESN'T have the component
+    // yet
     if (isHoveringScript && draggingLua &&
         IsMouseButtonReleased(MOUSE_LEFT_BUTTON)) {
       std::string path =
@@ -1081,4 +1129,4 @@ void DrawSpriteEditor(Entity e, Registry &reg, float xPos, float &currentY,
   currentY += boxHeight + 10;
 }
 
-} 
+} // namespace EditorSystem
