@@ -50,4 +50,7 @@
 /Int/Lua
 /Int
 /Build
-temp_play.bds
+/External/imgui
+/External/rlimgui
+imgui.ini
+*.bds
