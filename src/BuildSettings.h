@@ -1,6 +1,6 @@
 #pragma once
 
-#define BD_SHIPPING 
+//#define BD_SHIPPING 
 
 #ifdef BD_SHIPPING
 #define BD_EDITOR_ENABLED 0

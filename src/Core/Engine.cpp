@@ -14,11 +14,20 @@ Engine::Engine(int width, int height, const std::string& title)
 
     SetConfigFlags(FLAG_WINDOW_RESIZABLE);
     InitWindow(screenWidth, screenHeight, windowTitle.c_str());
+    viewportTarget = LoadRenderTexture(screenWidth, screenHeight);
     /*int monitor = GetCurrentMonitor();
     if (!IsWindowFullscreen()) {
         SetWindowSize(GetMonitorWidth(monitor), GetMonitorHeight(monitor));
         ToggleFullscreen();
     }*/
+#ifndef BD_SHIPPING
+    rlImGuiSetup(true);
+    // Enable Docking
+	ImGuiIO& io = ImGui::GetIO();
+    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+    io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+#endif
 
     SetTargetFPS(0);
     isRunning = true;
@@ -50,7 +59,7 @@ Engine::Engine(int width, int height, const std::string& title)
 
     editor = std::make_unique<Editor>(this);
 
-#if BD_EDITOR_ENABLED
+#ifndef BD_SHIPPING
 	isEditorMode = true;
 #else
 	isEditorMode = false;
@@ -59,8 +68,16 @@ Engine::Engine(int width, int height, const std::string& title)
 
 Engine::~Engine() {
     SaveConfig();
+#ifndef BD_SHIPPING
+    rlImGuiShutdown();
+#endif
     CloseWindow();
 }
+
+void Engine::Exit() {
+    isRunning = false;
+}
+
 
 void Engine::LoadConfig() {
     TraceLog(LOG_INFO, "CONFIG: Loading EditorConfig.ini...");
@@ -206,7 +223,7 @@ void Engine::Update() {
     // GLOBAL OVERLAY TOGGLES
     //if (IsKeyPressed(KEY_F1)) showSettings = !showSettings;
     if (IsKeyPressed(KEY_TAB)) {
-#if BD_EDITOR_ENABLED
+#ifndef BD_SHIPPING
         isEditorMode = !isEditorMode;
 #else
 		isEditorMode = false;
@@ -235,7 +252,7 @@ void Engine::Update() {
             
             bool isTyping = (activeControlId != 0);
 
-            if (!isTyping && GetMousePosition().x > 250 && GetMousePosition().x < (screenWidth - 300)) {
+            if (!isTyping && IsMouseOverViewport) {
 
                 // Right-Click Pan
                 if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) {
@@ -293,8 +310,8 @@ void Engine::Update() {
 }
 
 void Engine::Render() {
-    //TraceLog(LOG_INFO, "ENGINE: Render Start");
-    BeginDrawing();
+    // 1. DRAW GAME TO A TEXTURE
+    BeginTextureMode(viewportTarget);
     ClearBackground(currentTheme.background);
 
     BeginMode2D(camera);
@@ -304,23 +321,70 @@ void Engine::Render() {
 
     if (isEditorMode && selectedEntity != -1 && registry->HasComponent(selectedEntity, COMP_TRANSFORM)) {
         auto& t = registry->transforms[selectedEntity];
-        auto& s = registry->sprites[selectedEntity];
-        Rectangle outline = { t.position.x - 2, t.position.y - 2,
-                             (s.texture.width * t.scale.x) + 4, (s.texture.height * t.scale.y) + 4 };
-        DrawRectangleLinesEx(outline, 2.0f / camera.zoom, ORANGE);
+        if (registry->HasComponent(selectedEntity, COMP_SPRITE)) {
+            auto& s = registry->sprites[selectedEntity];
+            Rectangle outline = { t.position.x - 2, t.position.y - 2,
+                                 (s.texture.width * t.scale.x) + 4, (s.texture.height * t.scale.y) + 4 };
+            DrawRectangleLinesEx(outline, 2.0f / camera.zoom, ORANGE);
+        }
     }
 
     RenderSystem::Draw(*registry);
+    DebugSystem::PhysicsDebug(*registry, camera);
     EndMode2D();
+    EndTextureMode();
 
-    UISystem::Draw(*registry);
+    // 2. DRAW UI AND EDITOR TO THE ACTUAL SCREEN
+    BeginDrawing();
+    ClearBackground(DARKGRAY);
+
+#ifndef BD_SHIPPING
+    // TO: Always run the ImGui lifecycle if we are in a non-shipping build.
+    // This prevents the "Forgot to call Render()" crash when toggling modes.
+    rlImGuiBegin();
 
     if (isEditorMode) {
+        ImGuiViewport* viewport = ImGui::GetMainViewport();
+        ImGui::SetNextWindowPos(viewport->WorkPos);
+        ImGui::SetNextWindowSize(viewport->WorkSize);
+        ImGui::SetNextWindowViewport(viewport->ID);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+
+        ImGuiWindowFlags window_flags = ImGuiWindowFlags_MenuBar | ImGuiWindowFlags_NoDocking;
+        window_flags |= ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove;
+        window_flags |= ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
+
+        ImGui::Begin("BDEngine_MasterDockHost", nullptr, window_flags);
+        ImGui::PopStyleVar(3);
+
+        // Main DockSpace
+        ImGuiID dockspace_id = ImGui::GetID("BDEngineDockSpace");
+        ImGui::DockSpace(dockspace_id, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_None);
+
         editor->Render();
+
+        ImGui::End();
+    }
+    else {
+        
     }
 
-    DebugSystem::Draw(*registry, stats, GetScreenWidth());
-	DebugSystem::PhysicsDebug(*registry, camera);
+    rlImGuiEnd();
+#endif
+
+    // 3. DRAW GAME VIEWPORT (If not handled by ImGui window)
+    if (!isEditorMode) {
+        DrawTexturePro(viewportTarget.texture,
+            { 0, 0, (float)viewportTarget.texture.width, (float)-viewportTarget.texture.height },
+            { 0, 0, (float)GetScreenWidth(), (float)GetScreenHeight() },
+            { 0, 0 }, 0, WHITE);
+
+        UISystem::Draw(*registry);
+        DebugSystem::Draw(*registry, stats, GetScreenWidth());
+    }
+
     EndDrawing();
 }
 

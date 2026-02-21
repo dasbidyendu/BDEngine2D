@@ -14,9 +14,10 @@ public:
 
     void Update();
     void Render();
-    void DrawTopBar();
     void DrawUIPalette();
     void DrawUIViewport();
+    void DrawSceneView();
+	void DrawMenuBar();
 
     std::string currentBrowserPath = "assets";
     std::string lastPath = "";
@@ -34,6 +35,7 @@ public:
 
 private:
     Engine* owner;
+    /*void CreateMainDockSpace();*/
 };
 
 namespace EditorSystem {

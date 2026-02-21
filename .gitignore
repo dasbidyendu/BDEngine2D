@@ -50,3 +50,6 @@
 /Int/Lua
 /Int
 /Build
+/External/imgui
+/External/rlimgui
+imgui.ini

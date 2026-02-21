@@ -1,5 +1,7 @@
 #pragma once
 #include "raylib.h"
+#include "imgui.h"
+#include "rlImGui.h"
 #include <string>
 #include <vector>
 #include <memory>
@@ -22,6 +24,7 @@ public:
     void InitGame();
     void Run();
     void InitScripting();
+    void Exit();
 
     void ApplyTheme(const std::string& themeName);
     void SaveConfig();
@@ -31,9 +34,11 @@ public:
     Camera2D& GetCamera() { return camera; }
 
     bool IsMouseOverUI = false;
+    bool IsMouseOverViewport = false;
     bool isEditorMode = true;
     bool showSettings = false;
     
+
     int activeControlId = 0;
 
     std::unique_ptr<Editor> editor;
@@ -52,6 +57,8 @@ public:
 
     std::unique_ptr<ScriptEngine> scriptEngine;
     DebugStats stats;
+
+    RenderTexture2D viewportTarget;
 
 private:
     void Update();
@@ -90,4 +97,5 @@ private:
     SpatialHashGrid physicsGrid{ 2000, 2000, 100 };
 
 	float physicsTimeAccumulator = 0.0f;
+    
 };
