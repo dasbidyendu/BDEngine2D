@@ -4,8 +4,7 @@
 #include "Engine.h"
 #include "Managers/ResourceManager.h"
 #include "Utils/AssetEntry.h"
-#include "raygui.h"
-#include "raymath.h"
+#include "raylib.h"
 #include <algorithm>
 #include <filesystem>
 
@@ -148,7 +147,7 @@ void Editor::Update() {
 }
 void Editor::DrawSceneView() {
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
-  if (ImGui::Begin("Scene View")) {
+  if (ImGui::Begin("Scene")) {
     ImVec2 size = ImGui::GetContentRegionAvail();
 
     // Dynamic Resolution Matching
@@ -164,6 +163,26 @@ void Editor::DrawSceneView() {
 
     // Input handling focused on this window
     owner->IsMouseOverViewport = ImGui::IsWindowHovered();
+  }
+  ImGui::End();
+  ImGui::PopStyleVar();
+}
+
+void Editor::DrawGameView() {
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+  if (ImGui::Begin("Game")) {
+    ImVec2 size = ImGui::GetContentRegionAvail();
+
+    // Dynamic Resolution Matching for Game View
+    if (size.x != owner->gameTarget.texture.width ||
+        size.y != owner->gameTarget.texture.height) {
+      if (size.x > 0 && size.y > 0) {
+        UnloadRenderTexture(owner->gameTarget);
+        owner->gameTarget = LoadRenderTexture((int)size.x, (int)size.y);
+      }
+    }
+
+    rlImGuiImageRenderTexture(&owner->gameTarget);
   }
   ImGui::End();
   ImGui::PopStyleVar();
@@ -197,10 +216,8 @@ void Editor::DrawTransportBar() {
       if (owner->playState == Engine::Stopped) {
         // SceneManager::SaveScene("temp_play.bds", *owner->registry);
         owner->playState = Engine::Playing;
-        owner->isEditorMode = false;
       } else if (owner->playState == Engine::Paused) {
         owner->playState = Engine::Playing;
-        owner->isEditorMode = false;
       }
     }
     if (isPlaying)
@@ -215,7 +232,6 @@ void Editor::DrawTransportBar() {
     if (ImGui::Button(ICON_FA_PAUSE, ImVec2(btnSize, btnSize))) {
       if (owner->playState == Engine::Playing) {
         owner->playState = Engine::Paused;
-        owner->isEditorMode = true;
       }
     }
     if (isPaused)
@@ -228,7 +244,6 @@ void Editor::DrawTransportBar() {
       if (owner->playState != Engine::Stopped) {
         // SceneManager::LoadScene("temp_play.bds", *owner->registry, owner);
         owner->playState = Engine::Stopped;
-        owner->isEditorMode = true;
       }
     }
   }
@@ -241,34 +256,8 @@ void Editor::Render() {
   DrawTransportBar();
   DrawMenuBar(); // Handles its own BeginMenuBar/EndMenuBar
 
-  // 2. SCENE VIEW WINDOW
-  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
-  if (ImGui::Begin("Scene")) {
-    ImVec2 size = ImGui::GetContentRegionAvail();
-    // ... (existing Scene View logic uses owner->viewportTarget)
-
-    // Dynamic Resolution Matching
-    if (size.x != owner->viewportTarget.texture.width ||
-        size.y != owner->viewportTarget.texture.height) {
-      if (size.x > 0 && size.y > 0) {
-        UnloadRenderTexture(owner->viewportTarget);
-        owner->viewportTarget = LoadRenderTexture((int)size.x, (int)size.y);
-      }
-    }
-
-    rlImGuiImageRenderTexture(&owner->viewportTarget);
-
-    // Handle Overlay Text for UI Mode
-    if (currentMode == MODE_UI_EDITOR) {
-      DrawText("CANVAS EDIT MODE", size.x / 2 - 50, 50, 20, GREEN);
-      DrawRectangleLines(0, 0, size.x, size.y, Fade(GREEN, 0.3f));
-    }
-
-    // Input handling focused on this window
-    owner->IsMouseOverViewport = ImGui::IsWindowHovered();
-  }
-  ImGui::End();
-  ImGui::PopStyleVar();
+  DrawSceneView();
+  DrawGameView();
 
   // 3. ASSET BROWSER / PALETTE WINDOW
   ImGui::Begin(currentMode == MODE_WORLD ? "Asset Browser" : "UI Palette");

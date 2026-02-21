@@ -1,11 +1,4 @@
 #pragma once
-#include "Core/Physics.h"
-#include "ECS/Systems.h"
-#include "ECS/UISystem.h"
-#include "Managers/ResourceManager.h"
-#include "Managers/ScriptSystem.h"
-#include "Profiler.h"
-#include "Utils/AssetEntry.h"
 #include "imgui.h"
 #include "raylib.h"
 #include "raymath.h"
@@ -13,6 +6,16 @@
 #include <memory>
 #include <string>
 #include <vector>
+
+
+#include "ECS/Systems.h"
+#include "ECS/UISystem.h"
+#include "Managers/ResourceManager.h"
+#include "Managers/ScriptSystem.h"
+#include "Physics.h"
+#include "Profiler.h"
+#include "Utils/AssetEntry.h"
+
 
 class Editor;
 

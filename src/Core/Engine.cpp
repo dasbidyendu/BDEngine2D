@@ -234,17 +234,17 @@ void Engine::Update() {
   }
 
   // GLOBAL OVERLAY TOGGLES
-  // if (IsKeyPressed(KEY_F1)) showSettings = !showSettings;
+  if (IsKeyPressed(KEY_F1))
+    isEditorMode = !isEditorMode;
+
   if (IsKeyPressed(KEY_TAB)) {
 #ifndef BD_SHIPPING
     if (playState == Stopped) {
-      SceneManager::SaveScene("temp_play.bds", *registry);
+      // SceneManager::SaveScene("temp_play.bds", *registry);
       playState = Playing;
-      isEditorMode = false;
     } else {
-      SceneManager::LoadScene("temp_play.bds", *registry, this);
+      // SceneManager::LoadScene("temp_play.bds", *registry, this);
       playState = Stopped;
-      isEditorMode = true;
     }
 #else
     isEditorMode = false;
@@ -270,13 +270,13 @@ void Engine::Update() {
 
   // MAIN LOGIC
   if (!showSettings) {
+#ifndef BD_SHIPPING
+    // Editor UI logic always runs in dev
+    editor->Update();
+
     if (isEditorMode) {
-      editor->Update();
-
       bool isTyping = (activeControlId != 0);
-
       if (!isTyping && IsMouseOverViewport) {
-
         // Right-Click Pan
         if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) {
           Vector2 delta = GetMouseDelta();
@@ -295,32 +295,33 @@ void Engine::Update() {
           camera.zoom = Clamp(camera.zoom, 0.1f, 5.0f);
         }
       }
-    } else {
-      // PLAY MODE LOGIC
-      if (playState == Playing) {
-        InputSystem::Update(*registry);
-        ControlSystem::Update(*registry);
+    }
+#endif
 
-        float dt = GetFrameTime();
-        const float fixedDeltaTime = 0.024f;
-        physicsTimeAccumulator += dt;
+    // SIMULATION LOGIC (Always runs if Playing)
+    if (playState == Playing) {
+      InputSystem::Update(*registry);
+      ControlSystem::Update(*registry);
 
-        AnimationSystem::Update(*registry, dt);
+      float dt = GetFrameTime();
+      const float fixedDeltaTime = 0.024f;
+      physicsTimeAccumulator += dt;
 
-        while (physicsTimeAccumulator >= fixedDeltaTime) {
-          physicsSystem.UpdatePhysics(fixedDeltaTime, *registry, physicsGrid);
-          MovementSystem::Update(*registry, fixedDeltaTime);
-          physicsTimeAccumulator -= fixedDeltaTime;
-        }
+      AnimationSystem::Update(*registry, dt);
 
-        if (scriptEngine) {
-          for (Entity i : registry->activeEntities) {
-            if (registry->HasComponent(i, COMP_SCRIPT)) {
-              auto &script = registry->scripts[i];
-              for (const std::string &path : script.scriptPaths) {
-                if (!path.empty()) {
-                  scriptEngine->Execute(i, path, dt);
-                }
+      while (physicsTimeAccumulator >= fixedDeltaTime) {
+        physicsSystem.UpdatePhysics(fixedDeltaTime, *registry, physicsGrid);
+        MovementSystem::Update(*registry, fixedDeltaTime);
+        physicsTimeAccumulator -= fixedDeltaTime;
+      }
+
+      if (scriptEngine) {
+        for (Entity i : registry->activeEntities) {
+          if (registry->HasComponent(i, COMP_SCRIPT)) {
+            auto &script = registry->scripts[i];
+            for (const std::string &path : script.scriptPaths) {
+              if (!path.empty()) {
+                scriptEngine->Execute(i, path, dt);
               }
             }
           }
@@ -348,10 +349,10 @@ void Engine::Render() {
   ClearBackground(currentTheme.background);
 
   // Draw the clean game view first
-  DrawTextureRec(gameTarget.texture,
-                 (Rectangle){0, 0, (float)gameTarget.texture.width,
-                             (float)-gameTarget.texture.height},
-                 (Vector2){0, 0}, WHITE);
+  Rectangle src = {0, 0, (float)gameTarget.texture.width,
+                   (float)-gameTarget.texture.height};
+  Vector2 pos = {0, 0};
+  DrawTextureRec(gameTarget.texture, src, pos, WHITE);
 
   BeginMode2D(camera);
   if (showGrid) {
@@ -379,11 +380,11 @@ void Engine::Render() {
   ClearBackground(DARKGRAY);
 
 #ifndef BD_SHIPPING
-  // TO: Always run the ImGui lifecycle if we are in a non-shipping build.
-  // This prevents the "Forgot to call Render()" crash when toggling modes.
-  rlImGuiBegin();
-
   if (isEditorMode) {
+    // TO: Always run the ImGui lifecycle if we are in a non-shipping build.
+    // This prevents the "Forgot to call Render()" crash when toggling modes.
+    rlImGuiBegin();
+
     ImGui::SetNextWindowPos(ImVec2(0, 0));
     ImGui::SetNextWindowSize(
         ImVec2((float)GetScreenWidth(), (float)GetScreenHeight()));
@@ -408,19 +409,19 @@ void Engine::Render() {
     editor->Render();
 
     ImGui::End();
-  } else {
-  }
 
-  rlImGuiEnd();
+    rlImGuiEnd();
+  }
 #endif
 
   // 3. DRAW GAME VIEWPORT (If not handled by ImGui window)
   if (!isEditorMode) {
-    DrawTexturePro(viewportTarget.texture,
-                   {0, 0, (float)viewportTarget.texture.width,
-                    (float)-viewportTarget.texture.height},
-                   {0, 0, (float)GetScreenWidth(), (float)GetScreenHeight()},
-                   {0, 0}, 0, WHITE);
+    DrawTexturePro(
+        gameTarget.texture,
+        Rectangle{0, 0, (float)gameTarget.texture.width,
+                  (float)-gameTarget.texture.height},
+        Rectangle{0, 0, (float)GetScreenWidth(), (float)GetScreenHeight()},
+        Vector2{0, 0}, 0, WHITE);
 
     UISystem::Draw(*registry);
     DebugSystem::Draw(*registry, stats, GetScreenWidth());

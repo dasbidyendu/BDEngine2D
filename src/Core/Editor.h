@@ -4,7 +4,6 @@
 #include <string>
 #include <vector>
 
-
 class Engine;
 class Registry;
 struct AssetEntry;
@@ -19,6 +18,7 @@ public:
   void DrawUIPalette();
   void DrawUIViewport();
   void DrawSceneView();
+  void DrawGameView();
   void DrawMenuBar();
 
   std::string currentBrowserPath = "assets";
