@@ -7,7 +7,6 @@
 #include <string>
 #include <vector>
 
-
 #include "ECS/Systems.h"
 #include "ECS/UISystem.h"
 #include "Managers/ResourceManager.h"
@@ -15,7 +14,6 @@
 #include "Physics.h"
 #include "Profiler.h"
 #include "Utils/AssetEntry.h"
-
 
 class Editor;
 
@@ -97,7 +95,7 @@ private:
   std::string lastThemePath = "assets/themes/dark-gold.txt";
   void ScanThemes();
 
-  Font engineFont;
+  Font engineFont = {0};
   void ScanFonts();
 
   PhysicsSystem physicsSystem;

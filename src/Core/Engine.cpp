@@ -521,6 +521,8 @@ void Engine::ApplyTheme(const std::string &filePath) {
   currentTheme.gridColor = parseColor("grid");
   currentTheme.accentColor = parseColor("accent");
 
+  this->gridColor = currentTheme.gridColor;
+
   size_t fontPos = content.find("fontSize: ");
   if (fontPos != std::string::npos) {
     int fSize = 0;

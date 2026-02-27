@@ -54,3 +54,7 @@
 /External/rlimgui
 imgui.ini
 *.bds
+
+# Blog drafts - local only
+/MediumBlogUpdates
+/out/build

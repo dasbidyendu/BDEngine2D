@@ -44,8 +44,6 @@ void DrawGrid(int gridSize, Camera2D camera, int screenWidth, int screenHeight,
               Color color);
 void DrawAssetBrowser(std::vector<AssetEntry> &assets, std::string &currentPath,
                       int &draggedIndex);
-void DrawSpriteEditor(Entity e, Registry &reg, float xPos, float &currentY,
-                      float panelWidth, Engine *engine);
 void DrawUIInspector(Entity e, Registry &reg, float xPos, float &currentY,
                      float panelWidth, Engine *engine);
 } // namespace EditorSystem
