@@ -489,38 +489,123 @@ void DrawGrid(int gridSize, Camera2D camera, int screenWidth, int screenHeight,
   }
 }
 
+static bool BeginPropertyGrid(const char *id) {
+  ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(4, 4));
+  return ImGui::BeginTable(id, 2,
+                           ImGuiTableFlags_BordersInnerV |
+                               ImGuiTableFlags_SizingStretchProp |
+                               ImGuiTableFlags_Resizable);
+}
+
+static void EndPropertyGrid() {
+  ImGui::EndTable();
+  ImGui::PopStyleVar();
+}
+
+static void PropertyLabel(const char *label) {
+  ImGui::TableNextColumn();
+  float curY = ImGui::GetCursorPosY();
+  ImGui::SetCursorPosY(curY + 3.0f); // slight vertical centering
+  ImGui::TextUnformatted(label);
+  ImGui::TableNextColumn();
+  ImGui::SetNextItemWidth(-FLT_MIN);
+}
+
+static void DrawVec2Control(const std::string &label, Vector2 &values,
+                            float resetValue = 0.0f) {
+  PropertyLabel(label.c_str());
+
+  ImGui::PushID(label.c_str());
+
+  float lineHeight =
+      ImGui::GetFontSize() + ImGui::GetStyle().FramePadding.y * 2.0f;
+  ImVec2 buttonSize = {lineHeight + 3.0f, lineHeight};
+  float widthEach = (ImGui::CalcItemWidth() - buttonSize.x * 2.0f) / 2.0f;
+
+  ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2{0, 0});
+
+  ImGui::PushStyleColor(ImGuiCol_Button, ImVec4{0.8f, 0.1f, 0.15f, 1.0f});
+  ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4{0.9f, 0.2f, 0.2f, 1.0f});
+  ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4{0.8f, 0.1f, 0.15f, 1.0f});
+  if (ImGui::Button("X", buttonSize))
+    values.x = resetValue;
+  ImGui::PopStyleColor(3);
+
+  ImGui::SameLine();
+  ImGui::PushItemWidth(widthEach);
+  ImGui::DragFloat("##X", &values.x, 0.1f, 0.0f, 0.0f, "%.2f");
+  ImGui::PopItemWidth();
+  ImGui::SameLine();
+
+  ImGui::PushStyleColor(ImGuiCol_Button, ImVec4{0.2f, 0.7f, 0.2f, 1.0f});
+  ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4{0.3f, 0.8f, 0.3f, 1.0f});
+  ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4{0.2f, 0.7f, 0.2f, 1.0f});
+  if (ImGui::Button("Y", buttonSize))
+    values.y = resetValue;
+  ImGui::PopStyleColor(3);
+
+  ImGui::SameLine();
+  ImGui::PushItemWidth(widthEach);
+  ImGui::DragFloat("##Y", &values.y, 0.1f, 0.0f, 0.0f, "%.2f");
+  ImGui::PopItemWidth();
+
+  ImGui::PopStyleVar();
+  ImGui::PopID();
+}
+
+static void DrawColorControl(const std::string &label, Color &color) {
+  PropertyLabel(label.c_str());
+  float col[4] = {color.r / 255.0f, color.g / 255.0f, color.b / 255.0f,
+                  color.a / 255.0f};
+  ImGui::PushID(label.c_str());
+  if (ImGui::ColorEdit4("##Color", col,
+                        ImGuiColorEditFlags_NoInputs |
+                            ImGuiColorEditFlags_Uint8)) {
+    color.r = (unsigned char)(col[0] * 255.0f);
+    color.g = (unsigned char)(col[1] * 255.0f);
+    color.b = (unsigned char)(col[2] * 255.0f);
+    color.a = (unsigned char)(col[3] * 255.0f);
+  }
+  ImGui::PopID();
+}
+
 void DrawUIInspector(Entity e, Registry &reg, float xPos, float &currentY,
                      float panelWidth, Engine *engine) {
   auto &ui = reg.uiComponents[e];
 
   if (ImGui::CollapsingHeader("UI Component", ImGuiTreeNodeFlags_DefaultOpen)) {
-    const char *types[] = {"PANEL", "BUTTON", "LABEL", "IMAGE"};
-    int typeInt = (int)ui.type;
-    if (ImGui::Combo("Type", &typeInt, types, 4)) {
-      ui.type = (UIType)typeInt;
-    }
-
-    if (ui.type != UI_IMAGE) {
-      char textBuf[128];
-      strcpy(textBuf, ui.text.c_str());
-      if (ImGui::InputText("Text", textBuf, 128)) {
-        ui.text = textBuf;
+    if (BeginPropertyGrid("ui_prop_grid")) {
+      PropertyLabel("Type");
+      const char *types[] = {"PANEL", "BUTTON", "LABEL", "IMAGE"};
+      int typeInt = (int)ui.type;
+      if (ImGui::Combo("##Type", &typeInt, types, 4)) {
+        ui.type = (UIType)typeInt;
       }
-    }
 
-    ImGui::DragFloat2("Offset", &ui.offset.x, 1.0f);
-    ImGui::DragFloat2("Size", &ui.size.x, 1.0f);
+      if (ui.type != UI_IMAGE) {
+        PropertyLabel("Text");
+        char textBuf[128];
+        strcpy(textBuf, ui.text.c_str());
+        if (ImGui::InputText("##Text", textBuf, 128)) {
+          ui.text = textBuf;
+        }
+      }
 
-    const char *anchors[] = {"Top Left", "Top Right", "Center", "Bottom Left"};
-    int anchorInt = (int)ui.anchor;
-    if (ImGui::Combo("Anchor", &anchorInt, anchors, 4)) {
-      ui.anchor = (UIAnchor)anchorInt;
-    }
+      DrawVec2Control("Offset", ui.offset);
+      DrawVec2Control("Size", ui.size);
 
-    if (ui.type == UI_IMAGE || ui.type == UI_BUTTON || ui.type == UI_PANEL) {
-      ImGui::ColorEdit4("Color", (float *)&ui.color,
-                        ImGuiColorEditFlags_NoInputs |
-                            ImGuiColorEditFlags_Uint8);
+      PropertyLabel("Anchor");
+      const char *anchors[] = {"Top Left", "Top Right", "Center",
+                               "Bottom Left"};
+      int anchorInt = (int)ui.anchor;
+      if (ImGui::Combo("##Anchor", &anchorInt, anchors, 4)) {
+        ui.anchor = (UIAnchor)anchorInt;
+      }
+
+      if (ui.type == UI_IMAGE || ui.type == UI_BUTTON || ui.type == UI_PANEL) {
+        DrawColorControl("Color", ui.color);
+      }
+      EndPropertyGrid();
     }
   }
 }
@@ -546,12 +631,18 @@ void DrawInspector(Entity e, Registry &reg, int screenWidth, int screenHeight,
       if (ImGui::CollapsingHeader("Transform",
                                   ImGuiTreeNodeFlags_DefaultOpen)) {
         auto &t = reg.transforms[e];
-        ImGui::DragFloat2("Position", &t.position.x, 1.0f);
-        float deg = t.rotation;
-        if (ImGui::DragFloat("Rotation", &deg, 0.5f)) {
-          t.rotation = deg;
+        if (BeginPropertyGrid("transform_grid")) {
+          DrawVec2Control("Position", t.position);
+
+          PropertyLabel("Rotation");
+          float deg = t.rotation;
+          if (ImGui::DragFloat("##Rotation", &deg, 0.5f)) {
+            t.rotation = deg;
+          }
+
+          DrawVec2Control("Scale", t.scale, 1.0f);
+          EndPropertyGrid();
         }
-        ImGui::DragFloat2("Scale", &t.scale.x, 0.01f, 0.001f, 100.0f);
       }
     }
 
@@ -594,11 +685,16 @@ void DrawInspector(Entity e, Registry &reg, int screenWidth, int screenHeight,
         ImGui::SameLine();
         ImGui::BeginGroup();
         ImGui::Text("Path: %s", GetFileName(s.texturePath.c_str()));
-        ImGui::ColorEdit4("Tint", (float *)&s.tint,
-                          ImGuiColorEditFlags_NoInputs |
-                              ImGuiColorEditFlags_Uint8);
-        ImGui::Checkbox("Flip X", &s.flipX);
-        ImGui::DragFloat2("Anchor", &s.anchor.x, 0.1f, 0.0f, 1.0f);
+
+        if (BeginPropertyGrid("sprite_grid")) {
+          DrawColorControl("Tint", s.tint);
+
+          PropertyLabel("Flip X");
+          ImGui::Checkbox("##FlipX", &s.flipX);
+
+          DrawVec2Control("Anchor", s.anchor);
+          EndPropertyGrid();
+        }
         ImGui::EndGroup();
       }
     }
@@ -607,7 +703,48 @@ void DrawInspector(Entity e, Registry &reg, int screenWidth, int screenHeight,
     if (reg.HasComponent(e, COMP_VELOCITY)) {
       if (ImGui::CollapsingHeader("Velocity", ImGuiTreeNodeFlags_DefaultOpen)) {
         auto &v = reg.velocities[e];
-        ImGui::DragFloat2("Velocity", &v.speed.x, 0.5f);
+        if (BeginPropertyGrid("velocity_grid")) {
+          DrawVec2Control("Speed", v.speed);
+          EndPropertyGrid();
+        }
+      }
+    }
+
+    // INPUT COMPONENT
+    if (reg.HasComponent(e, COMP_INPUT)) {
+      if (ImGui::CollapsingHeader("Input", ImGuiTreeNodeFlags_DefaultOpen)) {
+        auto &in = reg.inputComponents[e];
+        if (BeginPropertyGrid("input_grid")) {
+          PropertyLabel("Up");
+          ImGui::TextDisabled("%s", in.up ? "TRUE" : "FALSE");
+          PropertyLabel("Down");
+          ImGui::TextDisabled("%s", in.down ? "TRUE" : "FALSE");
+          PropertyLabel("Left");
+          ImGui::TextDisabled("%s", in.left ? "TRUE" : "FALSE");
+          PropertyLabel("Right");
+          ImGui::TextDisabled("%s", in.right ? "TRUE" : "FALSE");
+          EndPropertyGrid();
+        }
+      }
+    }
+
+    // UICANVAS COMPONENT
+    if (reg.HasComponent(e, COMP_UICANVAS)) {
+      if (ImGui::CollapsingHeader("UI Canvas",
+                                  ImGuiTreeNodeFlags_DefaultOpen)) {
+        auto &canvas = reg.uiCanvases[e];
+        if (BeginPropertyGrid("canvas_grid")) {
+          PropertyLabel("Name");
+          char nameBuf[128];
+          strcpy(nameBuf, canvas.name.c_str());
+          if (ImGui::InputText("##CanvasName", nameBuf, 128)) {
+            canvas.name = nameBuf;
+          }
+
+          PropertyLabel("Active");
+          ImGui::Checkbox("##CanvasActive", &canvas.isActive);
+          EndPropertyGrid();
+        }
       }
     }
 
@@ -650,22 +787,50 @@ void DrawInspector(Entity e, Registry &reg, int screenWidth, int screenHeight,
     if (reg.HasComponent(e, COMP_RIGIDPHYSICS)) {
       if (ImGui::CollapsingHeader("Physics", ImGuiTreeNodeFlags_DefaultOpen)) {
         auto &rp = reg.rigidPhysicsComponents[e];
-        ImGui::DragFloat("Mass", &rp.mass, 0.1f, 0.0f, 1000.0f);
-        ImGui::DragFloat("Restitution", &rp.restitution, 0.01f, 0.0f, 1.0f);
-        ImGui::DragFloat("Friction", &rp.friction, 0.01f, 0.0f, 1.0f);
-        ImGui::Checkbox("Static", &rp.isStatic);
-        ImGui::Checkbox("Gravity", &rp.affectedByGravity);
+        if (BeginPropertyGrid("physics_grid")) {
+          PropertyLabel("Mass");
+          ImGui::DragFloat("##Mass", &rp.mass, 0.1f, 0.0f, 1000.0f);
+          PropertyLabel("Restitution");
+          ImGui::DragFloat("##Restitution", &rp.restitution, 0.01f, 0.0f, 1.0f);
+          PropertyLabel("Friction");
+          ImGui::DragFloat("##Friction", &rp.friction, 0.01f, 0.0f, 1.0f);
+          PropertyLabel("Static");
+          ImGui::Checkbox("##Static", &rp.isStatic);
+          PropertyLabel("Gravity");
+          ImGui::Checkbox("##Gravity", &rp.affectedByGravity);
+          EndPropertyGrid();
+        }
       }
     }
 
-    // COLLIDERS
+    // CIRCLE COLLIDER
     if (reg.HasComponent(e, COMP_CIRCLECOLLIDER)) {
       if (ImGui::CollapsingHeader("Circle Collider",
                                   ImGuiTreeNodeFlags_DefaultOpen)) {
         auto &cc = reg.circleColliders[e];
-        ImGui::DragFloat("Radius", &cc.radius, 1.0f, 0.1f, 1000.0f);
-        ImGui::DragFloat2("Offset", &cc.offset.x, 0.5f);
-        ImGui::Checkbox("Show Debug", &cc.debugDraw);
+        if (BeginPropertyGrid("circlecol_grid")) {
+          PropertyLabel("Radius");
+          ImGui::DragFloat("##Radius", &cc.radius, 1.0f, 0.1f, 1000.0f);
+          DrawVec2Control("Offset", cc.offset);
+          PropertyLabel("Show Debug");
+          ImGui::Checkbox("##ShowDebugC", &cc.debugDraw);
+          EndPropertyGrid();
+        }
+      }
+    }
+
+    // BOX COLLIDER
+    if (reg.HasComponent(e, COMP_BOXCOLLIDER)) {
+      if (ImGui::CollapsingHeader("Box Collider",
+                                  ImGuiTreeNodeFlags_DefaultOpen)) {
+        auto &bc = reg.boxColliders[e];
+        if (BeginPropertyGrid("boxcol_grid")) {
+          DrawVec2Control("Size", bc.size, 32.0f);
+          DrawVec2Control("Offset", bc.offset);
+          PropertyLabel("Show Debug");
+          ImGui::Checkbox("##ShowDebugB", &bc.debugDraw);
+          EndPropertyGrid();
+        }
       }
     }
 
@@ -674,13 +839,22 @@ void DrawInspector(Entity e, Registry &reg, int screenWidth, int screenHeight,
       if (ImGui::CollapsingHeader("Animation",
                                   ImGuiTreeNodeFlags_DefaultOpen)) {
         auto &sa = reg.spriteAnimations[e];
-        ImGui::DragInt("Frames", &sa.frameCount, 1, 1, 128);
-        ImGui::DragInt("Rows", &sa.rowCount, 1, 1, 16);
-        float fps = (sa.frameDuration > 0) ? (1.0f / sa.frameDuration) : 0;
-        if (ImGui::DragFloat("FPS", &fps, 1.0f, 1.0f, 120.0f)) {
-          sa.frameDuration = 1.0f / fps;
+        if (BeginPropertyGrid("anim_grid")) {
+          PropertyLabel("Frames");
+          ImGui::DragInt("##Frames", &sa.frameCount, 1, 1, 128);
+          PropertyLabel("Rows");
+          ImGui::DragInt("##Rows", &sa.rowCount, 1, 1, 16);
+
+          PropertyLabel("FPS");
+          float fps = (sa.frameDuration > 0) ? (1.0f / sa.frameDuration) : 0;
+          if (ImGui::DragFloat("##FPS", &fps, 1.0f, 1.0f, 120.0f)) {
+            sa.frameDuration = 1.0f / fps;
+          }
+
+          PropertyLabel("Loop");
+          ImGui::Checkbox("##Loop", &sa.loop);
+          EndPropertyGrid();
         }
-        ImGui::Checkbox("Loop", &sa.loop);
       }
     }
 
@@ -732,6 +906,16 @@ void DrawInspector(Entity e, Registry &reg, int screenWidth, int screenHeight,
       if (!reg.HasComponent(e, COMP_CIRCLECOLLIDER) &&
           ImGui::MenuItem("Circle Collider")) {
         reg.AddComponent(e, CircleColliderComponent{});
+      }
+      if (!reg.HasComponent(e, COMP_BOXCOLLIDER) &&
+          ImGui::MenuItem("Box Collider")) {
+        reg.AddComponent(e, BoxColliderComponent{});
+      }
+      if (!reg.HasComponent(e, COMP_INPUT) && ImGui::MenuItem("Input")) {
+        reg.AddComponent(e, InputComponent{});
+      }
+      if (!reg.HasComponent(e, COMP_UICANVAS) && ImGui::MenuItem("UI Canvas")) {
+        reg.AddComponent(e, UICanvasComponent{});
       }
       if (!reg.HasComponent(e, COMP_SPRITE_ANIMATION) &&
           ImGui::MenuItem("Animation")) {

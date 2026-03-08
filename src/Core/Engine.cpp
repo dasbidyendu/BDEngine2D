@@ -142,62 +142,62 @@ void Engine::Run() {
 }
 
 void Engine::InitGame() {
-  const int TOTAL_ENTITIES = 2500;
-  const float WORLD_WIDTH = 1200.0f;
-  const float WORLD_HEIGHT = 800.0f;
+  //const int TOTAL_ENTITIES = 2500;
+  //const float WORLD_WIDTH = 1200.0f;
+  //const float WORLD_HEIGHT = 800.0f;
 
-  Entity floor = registry->CreateEntity();
-  registry->AddComponent(
-      floor,
-      TransformComponent{{WORLD_WIDTH / 2, WORLD_HEIGHT - 20}, {1, 1}, 0});
-  registry->AddComponent(floor, VelocityComponent{{0, 0}});
-  registry->AddComponent(floor,
-                         RigidPhysicsComponent{1.0f, 0.2f, 0.0f, 1.0f, true});
-  registry->AddComponent(
-      floor, BoxColliderComponent{{WORLD_WIDTH, 40.0f}, {0, 0}, true});
+  //Entity floor = registry->CreateEntity();
+  //registry->AddComponent(
+  //    floor,
+  //    TransformComponent{{WORLD_WIDTH / 2, WORLD_HEIGHT - 20}, {1, 1}, 0});
+  //registry->AddComponent(floor, VelocityComponent{{0, 0}});
+  //registry->AddComponent(floor,
+  //                       RigidPhysicsComponent{1.0f, 0.2f, 0.0f, 1.0f, true});
+  //registry->AddComponent(
+  //    floor, BoxColliderComponent{{WORLD_WIDTH, 40.0f}, {0, 0}, true});
 
-  for (int i = 0; i < 10; i++) {
-    Entity peg = registry->CreateEntity();
-    float x = (WORLD_WIDTH / 10) * i + 50;
-    float y = 300 + (i % 2 * 100);
+  //for (int i = 0; i < 10; i++) {
+  //  Entity peg = registry->CreateEntity();
+  //  float x = (WORLD_WIDTH / 10) * i + 50;
+  //  float y = 300 + (i % 2 * 100);
 
-    registry->AddComponent(peg, TransformComponent{{x, y}, {1, 1}, 0});
-    registry->AddComponent(peg, VelocityComponent{{0, 0}});
-    registry->AddComponent(peg,
-                           RigidPhysicsComponent{1.0f, 0.5f, 0.0f, 1.0f, true});
+  //  registry->AddComponent(peg, TransformComponent{{x, y}, {1, 1}, 0});
+  //  registry->AddComponent(peg, VelocityComponent{{0, 0}});
+  //  registry->AddComponent(peg,
+  //                         RigidPhysicsComponent{1.0f, 0.5f, 0.0f, 1.0f, true});
 
-    if (i % 2 == 0) {
-      registry->AddComponent(peg, CircleColliderComponent{{0, 0}, 20.0f, true});
-    } else {
-      registry->AddComponent(
-          peg, BoxColliderComponent{{60.0f, 20.0f}, {0, 0}, true});
-    }
-  }
+  //  if (i % 2 == 0) {
+  //    registry->AddComponent(peg, CircleColliderComponent{{0, 0}, 20.0f, true});
+  //  } else {
+  //    registry->AddComponent(
+  //        peg, BoxColliderComponent{{60.0f, 20.0f}, {0, 0}, true});
+  //  }
+  //}
 
-  for (int i = 0; i < TOTAL_ENTITIES; i++) {
-    Entity e = registry->CreateEntity();
+  //for (int i = 0; i < TOTAL_ENTITIES; i++) {
+  //  Entity e = registry->CreateEntity();
 
-    float rx = (float)GetRandomValue(100, (int)WORLD_WIDTH - 100);
-    float ry = (float)GetRandomValue(-1000, -50);
+  //  float rx = (float)GetRandomValue(100, (int)WORLD_WIDTH - 100);
+  //  float ry = (float)GetRandomValue(-1000, -50);
 
-    registry->AddComponent(e, TransformComponent{{rx, ry}, {1, 1}, 0});
-    registry->AddComponent(
-        e, VelocityComponent{{(float)GetRandomValue(-20, 20), 0}});
+  //  registry->AddComponent(e, TransformComponent{{rx, ry}, {1, 1}, 0});
+  //  registry->AddComponent(
+  //      e, VelocityComponent{{(float)GetRandomValue(-20, 20), 0}});
 
-    float mass = (float)GetRandomValue(1, 5);
-    float bounce = (float)GetRandomValue(2, 8) / 10.0f;
-    registry->AddComponent(
-        e, RigidPhysicsComponent{mass, bounce, 1.0f, 1.0f, false});
+  //  float mass = (float)GetRandomValue(1, 5);
+  //  float bounce = (float)GetRandomValue(2, 8) / 10.0f;
+  //  registry->AddComponent(
+  //      e, RigidPhysicsComponent{mass, bounce, 1.0f, 1.0f, false});
 
-    if (GetRandomValue(0, 1) == 0) {
-      float radius = (float)GetRandomValue(10, 25);
-      registry->AddComponent(e, CircleColliderComponent{{0, 0}, radius, true});
-    } else {
-      float size = (float)GetRandomValue(20, 40);
-      registry->AddComponent(e,
-                             BoxColliderComponent{{size, size}, {0, 0}, true});
-    }
-  }
+  //  if (GetRandomValue(0, 1) == 0) {
+  //    float radius = (float)GetRandomValue(10, 25);
+  //    registry->AddComponent(e, CircleColliderComponent{{0, 0}, radius, true});
+  //  } else {
+  //    float size = (float)GetRandomValue(20, 40);
+  //    registry->AddComponent(e,
+  //                           BoxColliderComponent{{size, size}, {0, 0}, true});
+  //  }
+  //}
   editorAssets = AssetScanner::Scan("assets");
   ScanThemes();
 
