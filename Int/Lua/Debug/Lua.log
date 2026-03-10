@@ -10,11 +10,11 @@
   ldump.c
   lfunc.c
   lgc.c
+  linit.c
 C:\dev\BDEngine\BDEngine\External\lua\lgc.c(384,21): warning C4334: '<<': result of 32-bit shift implicitly converted to 64 bits (was 64-bit shift intended?)
 C:\dev\BDEngine\BDEngine\External\lua\lgc.c(462,21): warning C4334: '<<': result of 32-bit shift implicitly converted to 64 bits (was 64-bit shift intended?)
 C:\dev\BDEngine\BDEngine\External\lua\lgc.c(667,19): warning C4334: '<<': result of 32-bit shift implicitly converted to 64 bits (was 64-bit shift intended?)
 C:\dev\BDEngine\BDEngine\External\lua\lgc.c(686,23): warning C4334: '<<': result of 32-bit shift implicitly converted to 64 bits (was 64-bit shift intended?)
-  linit.c
   liolib.c
   llex.c
   lmathlib.c

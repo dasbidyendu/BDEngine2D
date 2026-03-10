@@ -7,12 +7,18 @@
 #include <sstream>
 
 #define RAYGUI_IMPLEMENTATION
+#include "Utils/Logger.h"
 #include "raygui.h"
+
 
 Engine::Engine(int width, int height, const std::string &title)
     : screenWidth(width), screenHeight(height), windowTitle(title) {
 
   SetConfigFlags(FLAG_WINDOW_RESIZABLE);
+
+  Logger::Init();
+  SetTraceLogCallback(Logger::RaylibLogCallback);
+
   InitWindow(screenWidth, screenHeight, windowTitle.c_str());
   viewportTarget = LoadRenderTexture(screenWidth, screenHeight);
   gameTarget = LoadRenderTexture(screenWidth, screenHeight);
@@ -34,7 +40,7 @@ Engine::Engine(int width, int height, const std::string &title)
   SetTargetFPS(0);
   isRunning = true;
 
-  TraceLog(LOG_INFO, "Window Ready");
+  Logger::AddLog(LOG_LEVEL_INFO, "Window Ready");
   LoadConfig();
 
   camera.target = {0.0f, 0.0f};
@@ -52,10 +58,11 @@ Engine::Engine(int width, int height, const std::string &title)
     // Only init if pointer is valid
     if (scriptEngine) {
       scriptEngine->Init(*registry, &camera);
-      TraceLog(LOG_INFO, "SYSTEM: Script Engine Ready.");
+      Logger::AddLog(LOG_LEVEL_INFO, "SYSTEM: Script Engine Ready.");
     }
   } catch (...) {
-    TraceLog(LOG_ERROR, "CRITICAL: Script Engine failed to initialize!");
+    Logger::AddLog(LOG_LEVEL_ERROR,
+                   "CRITICAL: Script Engine failed to initialize!");
   }
 
   editor = std::make_unique<Editor>(this);
@@ -75,6 +82,7 @@ Engine::~Engine() {
   UnloadRenderTexture(viewportTarget);
   UnloadRenderTexture(gameTarget);
   CloseWindow();
+  Logger::Shutdown();
 }
 
 void Engine::Exit() { isRunning = false; }
@@ -134,7 +142,7 @@ void Engine::SaveConfig() {
 }
 
 void Engine::Run() {
-  TraceLog(LOG_INFO, "ENGINE: Entering Main Loop");
+  Logger::AddLog(LOG_LEVEL_INFO, "ENGINE: Entering Main Loop");
   while (!WindowShouldClose() && isRunning) {
     Update();
     Render();
@@ -142,40 +150,43 @@ void Engine::Run() {
 }
 
 void Engine::InitGame() {
-  //const int TOTAL_ENTITIES = 2500;
-  //const float WORLD_WIDTH = 1200.0f;
-  //const float WORLD_HEIGHT = 800.0f;
+  // const int TOTAL_ENTITIES = 2500;
+  // const float WORLD_WIDTH = 1200.0f;
+  // const float WORLD_HEIGHT = 800.0f;
 
-  //Entity floor = registry->CreateEntity();
-  //registry->AddComponent(
-  //    floor,
-  //    TransformComponent{{WORLD_WIDTH / 2, WORLD_HEIGHT - 20}, {1, 1}, 0});
-  //registry->AddComponent(floor, VelocityComponent{{0, 0}});
-  //registry->AddComponent(floor,
-  //                       RigidPhysicsComponent{1.0f, 0.2f, 0.0f, 1.0f, true});
-  //registry->AddComponent(
-  //    floor, BoxColliderComponent{{WORLD_WIDTH, 40.0f}, {0, 0}, true});
+  // Entity floor = registry->CreateEntity();
+  // registry->AddComponent(
+  //     floor,
+  //     TransformComponent{{WORLD_WIDTH / 2, WORLD_HEIGHT - 20}, {1, 1}, 0});
+  // registry->AddComponent(floor, VelocityComponent{{0, 0}});
+  // registry->AddComponent(floor,
+  //                        RigidPhysicsComponent{1.0f, 0.2f, 0.0f, 1.0f,
+  //                        true});
+  // registry->AddComponent(
+  //     floor, BoxColliderComponent{{WORLD_WIDTH, 40.0f}, {0, 0}, true});
 
-  //for (int i = 0; i < 10; i++) {
-  //  Entity peg = registry->CreateEntity();
-  //  float x = (WORLD_WIDTH / 10) * i + 50;
-  //  float y = 300 + (i % 2 * 100);
+  // for (int i = 0; i < 10; i++) {
+  //   Entity peg = registry->CreateEntity();
+  //   float x = (WORLD_WIDTH / 10) * i + 50;
+  //   float y = 300 + (i % 2 * 100);
 
   //  registry->AddComponent(peg, TransformComponent{{x, y}, {1, 1}, 0});
   //  registry->AddComponent(peg, VelocityComponent{{0, 0}});
   //  registry->AddComponent(peg,
-  //                         RigidPhysicsComponent{1.0f, 0.5f, 0.0f, 1.0f, true});
+  //                         RigidPhysicsComponent{1.0f, 0.5f, 0.0f, 1.0f,
+  //                         true});
 
   //  if (i % 2 == 0) {
-  //    registry->AddComponent(peg, CircleColliderComponent{{0, 0}, 20.0f, true});
+  //    registry->AddComponent(peg, CircleColliderComponent{{0, 0}, 20.0f,
+  //    true});
   //  } else {
   //    registry->AddComponent(
   //        peg, BoxColliderComponent{{60.0f, 20.0f}, {0, 0}, true});
   //  }
   //}
 
-  //for (int i = 0; i < TOTAL_ENTITIES; i++) {
-  //  Entity e = registry->CreateEntity();
+  // for (int i = 0; i < TOTAL_ENTITIES; i++) {
+  //   Entity e = registry->CreateEntity();
 
   //  float rx = (float)GetRandomValue(100, (int)WORLD_WIDTH - 100);
   //  float ry = (float)GetRandomValue(-1000, -50);
@@ -191,11 +202,13 @@ void Engine::InitGame() {
 
   //  if (GetRandomValue(0, 1) == 0) {
   //    float radius = (float)GetRandomValue(10, 25);
-  //    registry->AddComponent(e, CircleColliderComponent{{0, 0}, radius, true});
+  //    registry->AddComponent(e, CircleColliderComponent{{0, 0}, radius,
+  //    true});
   //  } else {
   //    float size = (float)GetRandomValue(20, 40);
   //    registry->AddComponent(e,
-  //                           BoxColliderComponent{{size, size}, {0, 0}, true});
+  //                           BoxColliderComponent{{size, size}, {0, 0},
+  //                           true});
   //  }
   //}
   editorAssets = AssetScanner::Scan("assets");
@@ -223,7 +236,8 @@ void Engine::Update() {
 
   if (IsKeyDown(KEY_LEFT_CONTROL) && IsKeyPressed(KEY_S)) {
     SceneManager::SaveScene("assets/scenes/main.scene", *registry);
-    TraceLog(LOG_INFO, "SYSTEM: Scene saved to assets/scenes/main.scene");
+    Logger::AddLog(LOG_LEVEL_SUCCESS,
+                   "SYSTEM: Scene saved to assets/scenes/main.scene");
   }
 
   // INPUT FOCUS KILL-SWITCH

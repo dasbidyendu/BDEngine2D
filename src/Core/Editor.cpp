@@ -5,11 +5,14 @@
 #include "Managers/ResourceManager.h"
 #include "Utils/AssetEntry.h"
 #include "Utils/AssetManager.h"
+#include "Utils/Logger.h"
 #include "raygui.h"
 #include "raylib.h"
 #include "raymath.h"
 #include <algorithm>
 #include <filesystem>
+#include <fstream>
+#include <sstream>
 
 namespace fs = std::filesystem;
 
@@ -130,31 +133,43 @@ void Editor::Update() {
       }
 
       if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && draggedAssetIndex == -1) {
-        Vector2 worldMouse =
-            GetScreenToWorld2D(GetMousePosition(), owner->GetCamera());
-        owner->selectedEntity = -1;
+        Vector2 mouseAbs = GetMousePosition();
 
-        for (Entity i : owner->registry->activeEntities) {
-          if (owner->registry->HasComponent(i, COMP_TRANSFORM) &&
-              owner->registry->HasComponent(i, COMP_SPRITE)) {
-            auto &t = owner->registry->transforms[i];
-            auto &s = owner->registry->sprites[i];
-            Rectangle bounds = {
-                t.position.x - (s.texture.width * t.scale.x * s.anchor.x),
-                t.position.y - (s.texture.height * t.scale.y * s.anchor.y),
-                (float)s.texture.width * t.scale.x,
-                (float)s.texture.height * t.scale.y};
+        // Check if mouse is within Scene View
+        if (mouseAbs.x >= sceneViewPos.x &&
+            mouseAbs.x <= sceneViewPos.x + sceneViewSize.x &&
+            mouseAbs.y >= sceneViewPos.y &&
+            mouseAbs.y <= sceneViewPos.y + sceneViewSize.y) {
 
-            if (CheckCollisionPointRec(worldMouse, bounds)) {
-              owner->selectedEntity = i;
-              break;
+          Vector2 relativeMouse = {mouseAbs.x - sceneViewPos.x,
+                                   mouseAbs.y - sceneViewPos.y};
+          Vector2 worldMouse =
+              GetScreenToWorld2D(relativeMouse, owner->GetCamera());
+
+          owner->selectedEntity = -1;
+
+          for (Entity i : owner->registry->activeEntities) {
+            if (owner->registry->HasComponent(i, COMP_TRANSFORM) &&
+                owner->registry->HasComponent(i, COMP_SPRITE)) {
+              auto &t = owner->registry->transforms[i];
+              auto &s = owner->registry->sprites[i];
+              Rectangle bounds = {
+                  t.position.x - (s.texture.width * t.scale.x * s.anchor.x),
+                  t.position.y - (s.texture.height * t.scale.y * s.anchor.y),
+                  (float)s.texture.width * t.scale.x,
+                  (float)s.texture.height * t.scale.y};
+
+              if (CheckCollisionPointRec(worldMouse, bounds)) {
+                owner->selectedEntity = i;
+                break;
+              }
             }
           }
         }
       }
 
       if (owner->selectedEntity != -1 && IsKeyPressed(KEY_DELETE)) {
-        owner->registry->entityMasks[owner->selectedEntity].reset();
+        owner->registry->DestroyEntity(owner->selectedEntity);
         owner->selectedEntity = -1;
       }
     }
@@ -166,6 +181,116 @@ void Editor::Update() {
     // even when ImGui has mouse focus (e.g. clicking in browser)
   }
 }
+void Editor::OpenScriptEditor(const std::string &path) {
+  // If already open, just mark it visible and focus it
+  for (auto &tab : openScriptTabs) {
+    if (tab.filePath == path) {
+      tab.open = true;
+      ImGui::SetWindowFocus((std::string(fs::path(path).filename().string()) +
+                             "###Script_" + path)
+                                .c_str());
+      return;
+    }
+  }
+
+  // Read file contents
+  std::ifstream file(path);
+  if (!file.is_open())
+    return;
+
+  std::stringstream ss;
+  ss << file.rdbuf();
+  file.close();
+
+  ScriptEditorTab tab;
+  tab.filePath = path;
+  tab.content = ss.str();
+  tab.dirty = false;
+  tab.open = true;
+  openScriptTabs.push_back(std::move(tab));
+}
+
+void Editor::DrawScriptEditors() {
+  for (int i = 0; i < (int)openScriptTabs.size(); i++) {
+    auto &tab = openScriptTabs[i];
+    if (!tab.open) {
+      openScriptTabs.erase(openScriptTabs.begin() + i);
+      i--;
+      continue;
+    }
+
+    std::string filename = fs::path(tab.filePath).filename().string();
+    std::string title =
+        (tab.dirty ? "* " : "") + filename + "###Script_" + tab.filePath;
+
+    ImGui::SetNextWindowSize(ImVec2(500, 400), ImGuiCond_FirstUseEver);
+    if (ImGui::Begin(title.c_str(), &tab.open, ImGuiWindowFlags_MenuBar)) {
+      // Menu bar with Save / Reload
+      if (ImGui::BeginMenuBar()) {
+        if (ImGui::MenuItem("Save", "Ctrl+S")) {
+          std::ofstream out(tab.filePath);
+          if (out.is_open()) {
+            out << tab.content;
+            out.close();
+            tab.dirty = false;
+            // Invalidate script cache so changes hot-reload
+            if (owner->scriptEngine) {
+              owner->scriptEngine->scriptCache.erase(tab.filePath);
+            }
+          }
+        }
+        if (ImGui::MenuItem("Reload")) {
+          std::ifstream in(tab.filePath);
+          if (in.is_open()) {
+            std::stringstream ss;
+            ss << in.rdbuf();
+            in.close();
+            tab.content = ss.str();
+            tab.dirty = false;
+          }
+        }
+        ImGui::EndMenuBar();
+      }
+
+      // Ctrl+S shortcut
+      if (ImGui::IsWindowFocused() && ImGui::GetIO().KeyCtrl &&
+          ImGui::IsKeyPressed(ImGuiKey_S)) {
+        std::ofstream out(tab.filePath);
+        if (out.is_open()) {
+          out << tab.content;
+          out.close();
+          tab.dirty = false;
+          if (owner->scriptEngine) {
+            owner->scriptEngine->scriptCache.erase(tab.filePath);
+          }
+        }
+      }
+
+      // Text editor
+      ImVec2 avail = ImGui::GetContentRegionAvail();
+      // Reserve enough buffer space
+      tab.content.reserve(tab.content.size() + 1024);
+      if (ImGui::InputTextMultiline(
+              "##ScriptCode", &tab.content[0], tab.content.capacity(), avail,
+              ImGuiInputTextFlags_AllowTabInput |
+                  ImGuiInputTextFlags_CallbackResize,
+              [](ImGuiInputTextCallbackData *data) -> int {
+                if (data->EventFlag == ImGuiInputTextFlags_CallbackResize) {
+                  std::string *str = (std::string *)data->UserData;
+                  str->resize(data->BufTextLen);
+                  data->Buf = &(*str)[0];
+                }
+                return 0;
+              },
+              &tab.content)) {
+        tab.content.resize(strlen(tab.content.c_str()));
+        tab.dirty = true;
+      }
+    }
+    ImGui::End();
+  }
+}
+
 void Editor::DrawSceneView() {
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
   if (ImGui::Begin("Scene")) {
@@ -179,6 +304,10 @@ void Editor::DrawSceneView() {
         owner->viewportTarget = LoadRenderTexture((int)size.x, (int)size.y);
       }
     }
+
+    ImVec2 screenPos = ImGui::GetCursorScreenPos();
+    sceneViewPos = {screenPos.x, screenPos.y};
+    sceneViewSize = {size.x, size.y};
 
     rlImGuiImageRenderTexture(&owner->viewportTarget);
 
@@ -218,6 +347,7 @@ void Editor::DrawSceneView() {
         }
       }
       ImGui::EndDragDropTarget();
+      draggedAssetIndex = -1;
     }
 
     // Input handling focused on this window
@@ -315,14 +445,37 @@ void Editor::Render() {
   DrawTransportBar();
   DrawMenuBar(); // Handles its own BeginMenuBar/EndMenuBar
 
+  if (showConsole) {
+    DrawConsole();
+  }
+
+  // 1.5. HIERARCHY WINDOW
+  ImGui::Begin("Hierarchy");
+  for (Entity i : owner->registry->activeEntities) {
+    if (owner->registry->entityMasks[i].none())
+      continue;
+    std::string entityName = "Entity " + std::to_string(i);
+    if (owner->registry->HasComponent(i, COMP_NAME)) {
+      entityName = owner->registry->names[i].name;
+    }
+
+    bool isSelected = (owner->selectedEntity == i);
+    std::string label = entityName + "##" + std::to_string(i);
+    if (ImGui::Selectable(label.c_str(), isSelected)) {
+      owner->selectedEntity = i;
+    }
+  }
+  ImGui::End();
+
   DrawSceneView();
   DrawGameView();
+  DrawScriptEditors();
 
   // 3. ASSET BROWSER / PALETTE WINDOW
   ImGui::Begin(currentMode == MODE_WORLD ? "Asset Browser" : "UI Palette");
   if (currentMode == MODE_WORLD) {
     EditorSystem::DrawAssetBrowser(owner->editorAssets, currentBrowserPath,
-                                   draggedAssetIndex);
+                                   draggedAssetIndex, this);
   } else {
     DrawUIPalette();
   }
@@ -378,11 +531,15 @@ void Editor::Render() {
 
   // 6. ASSET DRAG PREVIEW (Floating)
   if (draggedAssetIndex != -1) {
-    Vector2 mPos = GetMousePosition();
-    auto &asset = owner->editorAssets[draggedAssetIndex];
-    if (asset.isTexture && asset.preview.id != 0) {
-      DrawTextureEx(asset.preview, {mPos.x - 20, mPos.y - 20}, 0, 1.0f,
-                    Fade(WHITE, 0.6f));
+    if (draggedAssetIndex < (int)owner->editorAssets.size()) {
+      Vector2 mPos = GetMousePosition();
+      auto &asset = owner->editorAssets[draggedAssetIndex];
+      if (asset.isTexture && asset.preview.id != 0) {
+        DrawTextureEx(asset.preview, {mPos.x - 20, mPos.y - 20}, 0, 1.0f,
+                      Fade(WHITE, 0.6f));
+      }
+    } else {
+      draggedAssetIndex = -1; // Stale index, reset
     }
   }
 }
@@ -401,6 +558,11 @@ void Editor::DrawMenuBar() {
     if (ImGui::BeginMenu("Edit")) {
       if (ImGui::MenuItem("Undo", "Ctrl+Z")) {
       }
+      ImGui::EndMenu();
+    }
+
+    if (ImGui::BeginMenu("View")) {
+      ImGui::MenuItem("Console", nullptr, &showConsole);
       ImGui::EndMenu();
     }
 
@@ -621,7 +783,17 @@ void DrawInspector(Entity e, Registry &reg, int screenWidth, int screenHeight,
   ImGui::PushID(e);
 
   // Header with Entity ID
-  ImGui::TextDisabled("ENTITY %i", e);
+  if (reg.HasComponent(e, COMP_NAME)) {
+    auto &n = reg.names[e];
+    char nameBuf[128];
+    strcpy(nameBuf, n.name.c_str());
+    ImGui::SetNextItemWidth(-1);
+    if (ImGui::InputText("##EntityName", nameBuf, 128)) {
+      n.name = nameBuf;
+    }
+  } else {
+    ImGui::TextDisabled("ENTITY %i", e);
+  }
   ImGui::Separator();
 
   if (ImGui::BeginChild("InspectorContent")) {
@@ -771,14 +943,57 @@ void DrawInspector(Entity e, Registry &reg, int screenWidth, int screenHeight,
         }
 
         for (int i = 0; i < (int)sc.scriptPaths.size(); i++) {
-          ImGui::BulletText("%s", GetFileName(sc.scriptPaths[i].c_str()));
-          ImGui::SameLine(ImGui::GetContentRegionAvail().x - 20);
           ImGui::PushID(i);
+          ImGui::BulletText("%s", GetFileName(sc.scriptPaths[i].c_str()));
+
+          // Edit button
+          ImGui::SameLine(ImGui::GetContentRegionAvail().x - 45);
+          if (ImGui::SmallButton("Edit")) {
+            engine->editor->OpenScriptEditor(sc.scriptPaths[i]);
+          }
+
+          // Remove button
+          ImGui::SameLine(ImGui::GetContentRegionAvail().x - 20);
           if (ImGui::Button("X")) {
             sc.scriptPaths.erase(sc.scriptPaths.begin() + i);
             i--;
           }
           ImGui::PopID();
+        }
+
+        ImGui::Spacing();
+
+        // Create New Script
+        static char newScriptName[128] = "";
+        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - 130);
+        ImGui::InputText("##NewScriptName", newScriptName, 128);
+        ImGui::SameLine();
+        if (ImGui::Button("Create Script", ImVec2(120, 0))) {
+          std::string name(newScriptName);
+          if (!name.empty()) {
+            std::string scriptPath = "assets/scripts/" + name + ".lua";
+            // Create directories if needed
+            fs::create_directories(fs::path(scriptPath).parent_path());
+            // Write boilerplate
+            std::ofstream out(scriptPath);
+            if (out.is_open()) {
+              out << "-- " << name << ".lua\n";
+              out << "function OnUpdate(entity, dt)\n";
+              out << "    -- Your code here\n";
+              out << "end\n";
+              out.close();
+
+              // Add to entity
+              if (std::find(sc.scriptPaths.begin(), sc.scriptPaths.end(),
+                            scriptPath) == sc.scriptPaths.end()) {
+                sc.scriptPaths.push_back(scriptPath);
+              }
+
+              // Open in editor
+              engine->editor->OpenScriptEditor(scriptPath);
+              newScriptName[0] = '\0';
+            }
+          }
         }
       }
     }
@@ -963,7 +1178,8 @@ void DrawSettingsMenu(bool &open, int &activeTab, Registry &reg,
 }
 
 void DrawAssetBrowser(std::vector<AssetEntry> &allAssets,
-                      std::string &currentPath, int &draggedAssetIndex) {
+                      std::string &currentPath, int &draggedAssetIndex,
+                      Editor *editor) {
   // Breadcrumbs / Back button
   if (ImGui::Button("Back")) {
     currentPath = fs::path(currentPath).parent_path().string();
@@ -1002,6 +1218,14 @@ void DrawAssetBrowser(std::vector<AssetEntry> &allAssets,
           rlImGuiImage(&asset.preview);
         } else {
           ImGui::Button("FILE", ImVec2(iconSize, iconSize));
+          // Double-click .lua files to open in script editor
+          if (!asset.isFolder && ImGui::IsItemHovered() &&
+              ImGui::IsMouseDoubleClicked(0)) {
+            std::string ext = fs::path(asset.path).extension().string();
+            if (ext == ".lua" && editor) {
+              editor->OpenScriptEditor(asset.path);
+            }
+          }
         }
 
         // Label
@@ -1037,3 +1261,132 @@ void DrawAssetBrowser(std::vector<AssetEntry> &allAssets,
 }
 
 } // namespace EditorSystem
+void Editor::DrawConsole() {
+  ImGui::SetNextWindowSize(ImVec2(500, 400), ImGuiCond_FirstUseEver);
+  if (!ImGui::Begin("Console", &showConsole, ImGuiWindowFlags_MenuBar)) {
+    ImGui::End();
+    return;
+  }
+
+  // --- Menu Bar (Filters & Clear) ---
+  if (ImGui::BeginMenuBar()) {
+    if (ImGui::Button("Clear")) {
+      Logger::Clear();
+    }
+    ImGui::Separator();
+
+    // Icon/Text for filters
+    auto FilterButton = [](const char *label, bool *filter, ImVec4 color) {
+      if (*filter)
+        ImGui::PushStyleColor(ImGuiCol_Text, color);
+      else
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.5f, 0.5f, 0.5f, 1.0f));
+
+      if (ImGui::Button(label))
+        *filter = !*filter;
+
+      ImGui::PopStyleColor();
+    };
+
+    FilterButton("Info", &filterInfo, ImVec4(1, 1, 1, 1));
+    ImGui::SameLine();
+    FilterButton("Success", &filterSuccess, ImVec4(0, 1, 0, 1));
+    ImGui::SameLine();
+    FilterButton("Warn", &filterWarn, ImVec4(1, 1, 0, 1));
+    ImGui::SameLine();
+    FilterButton("Error", &filterError, ImVec4(1, 0, 0, 1));
+    ImGui::SameLine();
+    FilterButton("Raylib", &filterRaylib, ImVec4(0.5f, 0.5f, 1, 1));
+
+    ImGui::EndMenuBar();
+  }
+
+  // --- Search & Options Bar ---
+  ImGui::PushItemWidth(150);
+  ImGui::InputText("Search", consoleSearch, IM_ARRAYSIZE(consoleSearch));
+  ImGui::PopItemWidth();
+  ImGui::SameLine();
+  ImGui::Checkbox("Auto-scroll", &consoleAutoScroll);
+  ImGui::Separator();
+
+  // --- Log Display Area ---
+  const float footer_height_to_reserve =
+      ImGui::GetStyle().ItemSpacing.y + ImGui::GetFrameHeightWithSpacing();
+  ImGui::BeginChild("ScrollingRegion", ImVec2(0, -footer_height_to_reserve),
+                    false, ImGuiWindowFlags_HorizontalScrollbar);
+
+  if (ImGui::BeginPopupContextWindow()) {
+    if (ImGui::Selectable("Clear"))
+      Logger::Clear();
+    ImGui::EndPopup();
+  }
+
+  ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,
+                      ImVec2(4, 1)); // Tighten spacing
+
+  const auto &logs = Logger::GetLogs();
+  for (const auto &log : logs) {
+    // Apply filters
+    if (!log.showInConsole)
+      continue;
+
+    bool show = false;
+    if (log.level == LOG_LEVEL_INFO && filterInfo)
+      show = true;
+    if (log.level == LOG_LEVEL_WARNING && filterWarn)
+      show = true;
+    if (log.level == LOG_LEVEL_ERROR && filterError)
+      show = true;
+    if (log.level == LOG_LEVEL_SUCCESS && filterSuccess)
+      show = true;
+    if (log.level == LOG_LEVEL_RAYLIB && filterRaylib)
+      show = true;
+
+    if (!show)
+      continue;
+
+    // Search filter
+    if (consoleSearch[0] != '\0' &&
+        log.message.find(consoleSearch) == std::string::npos) {
+      continue;
+    }
+
+    // Color code
+    ImVec4 color = ImVec4(1, 1, 1, 1);
+    const char *levelStr = "[INFO]";
+    switch (log.level) {
+    case LOG_LEVEL_WARNING:
+      color = ImVec4(1, 1, 0.4f, 1);
+      levelStr = "[WARN]";
+      break;
+    case LOG_LEVEL_ERROR:
+      color = ImVec4(1, 0.4f, 0.4f, 1);
+      levelStr = "[ERROR]";
+      break;
+    case LOG_LEVEL_SUCCESS:
+      color = ImVec4(0.4f, 1, 0.4f, 1);
+      levelStr = "[SUCCESS]";
+      break;
+    case LOG_LEVEL_RAYLIB:
+      color = ImVec4(0.6f, 0.6f, 1, 1);
+      levelStr = "[RAY]";
+      break;
+    }
+
+    ImGui::TextDisabled("[%s]", log.timestamp.c_str());
+    ImGui::SameLine();
+    ImGui::PushStyleColor(ImGuiCol_Text, color);
+    ImGui::TextUnformatted(levelStr);
+    ImGui::PopStyleColor();
+    ImGui::SameLine();
+    ImGui::TextUnformatted(log.message.c_str());
+  }
+
+  if (consoleAutoScroll && ImGui::GetScrollY() >= ImGui::GetScrollMaxY())
+    ImGui::SetScrollHereY(1.0f);
+
+  ImGui::PopStyleVar();
+  ImGui::EndChild();
+
+  ImGui::End();
+}

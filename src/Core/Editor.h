@@ -8,9 +8,16 @@ class Engine;
 class Registry;
 struct AssetEntry;
 
+struct ScriptEditorTab {
+  std::string filePath;
+  std::string content;
+  bool dirty = false;
+  bool open = true;
+};
+
 class Editor {
 public:
-  Editor(Engine *engine) : owner(engine) {}
+  Editor(Engine *engine) : owner(engine) {};
 
   void Update();
   void Render();
@@ -21,6 +28,21 @@ public:
   void DrawGameView();
   void DrawMenuBar();
 
+  // Script editor
+  std::vector<ScriptEditorTab> openScriptTabs;
+  void OpenScriptEditor(const std::string &path);
+  void DrawScriptEditors();
+  void DrawConsole();
+
+  bool showConsole = true;
+  char consoleSearch[128] = "";
+  bool consoleAutoScroll = true;
+  bool filterInfo = true;
+  bool filterWarn = true;
+  bool filterError = true;
+  bool filterSuccess = true;
+  bool filterRaylib = false;
+
   std::string currentBrowserPath = "assets";
   std::string lastPath = "";
   int browserActiveTab = 0;
@@ -29,6 +51,9 @@ public:
   enum EditorMode { MODE_WORLD, MODE_UI_EDITOR } currentMode = MODE_WORLD;
 
   Entity activeCanvasId = -1;
+
+  Vector2 sceneViewPos = {0, 0};
+  Vector2 sceneViewSize = {0, 0};
 
 private:
   Engine *owner;
@@ -43,7 +68,7 @@ void DrawSettingsMenu(bool &open, int &activeTab, Registry &reg,
 void DrawGrid(int gridSize, Camera2D camera, int screenWidth, int screenHeight,
               Color color);
 void DrawAssetBrowser(std::vector<AssetEntry> &assets, std::string &currentPath,
-                      int &draggedIndex);
+                      int &draggedIndex, Editor *editor);
 void DrawUIInspector(Entity e, Registry &reg, float xPos, float &currentY,
                      float panelWidth, Engine *engine);
 } // namespace EditorSystem

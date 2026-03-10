@@ -5,6 +5,10 @@
 #include <string>
 #include <vector>
 
+struct NameComponent {
+  std::string name = "Entity";
+};
+
 struct alignas(16) TransformComponent {
   Vector2 position;
   Vector2 scale;

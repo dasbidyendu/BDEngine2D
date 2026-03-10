@@ -58,3 +58,9 @@ imgui.ini
 # Blog drafts - local only
 /MediumBlogUpdates
 /out/build
+/Build
+session_log.txt
+CppProperties.json
+/Build/Lua
+/Int
+/Build

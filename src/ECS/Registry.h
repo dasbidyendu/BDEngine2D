@@ -1,13 +1,14 @@
 #pragma once
 #include "Components.h"
 #include "Entity.h"
+
 #include <bitset>
 #include <vector>
-
 
 class Registry {
 public:
   Registry() {
+    names.resize(MAX_ENTITIES);
     transforms.resize(MAX_ENTITIES);
     sprites.resize(MAX_ENTITIES);
     velocities.resize(MAX_ENTITIES);
@@ -28,6 +29,11 @@ public:
     }
     Entity e = nextEntity++;
     activeEntities.push_back(e);
+
+    NameComponent defaultName;
+    defaultName.name = "Entity " + std::to_string(e);
+    AddComponent(e, defaultName);
+
     return e;
   }
 
@@ -43,6 +49,11 @@ public:
       *it = activeEntities.back();
       activeEntities.pop_back();
     }
+  }
+
+  void AddComponent(Entity entity, const NameComponent &c) {
+    names[entity] = c;
+    entityMasks[entity].set(COMP_NAME);
   }
 
   void AddComponent(Entity entity, const TransformComponent &c) {
@@ -121,6 +132,7 @@ public:
   void SetNextEntity(Entity val) { nextEntity = val; }
 
   std::vector<Entity> activeEntities;
+  std::vector<NameComponent> names;
   std::vector<TransformComponent> transforms;
   std::vector<SpriteComponent> sprites;
   std::vector<VelocityComponent> velocities;
