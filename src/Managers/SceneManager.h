@@ -5,7 +5,6 @@
 #include <iostream>
 #include <sstream>
 
-
 // Forward declaration to avoid circular includes
 class Engine;
 
@@ -73,17 +72,23 @@ public:
     std::string line;
     Entity maxE = 0;
 
+    Entity currentE = 0;
+
     while (std::getline(file, line)) {
       std::stringstream ss(line);
       std::string cmd;
       ss >> cmd;
 
-      static Entity currentE = 0;
-
       if (cmd == "ENTITY") {
         ss >> currentE;
         if (currentE >= maxE)
           maxE = currentE + 1;
+
+        // Ensure entity is tracked in activeEntities
+        if (std::find(reg.activeEntities.begin(), reg.activeEntities.end(),
+                      currentE) == reg.activeEntities.end()) {
+          reg.activeEntities.push_back(currentE);
+        }
       } else if (cmd == "TRANSFORM") {
         TransformComponent t;
         ss >> t.position.x >> t.position.y >> t.scale.x >> t.scale.y >>
@@ -101,6 +106,7 @@ public:
 
         if (!s.texturePath.empty()) {
           // Note: accessing engine->assets directly as per your class header
+          engine->assets.LoadTextureAsset(s.texturePath, s.texturePath);
           s.texture = engine->assets.GetTexture(s.texturePath);
         }
         reg.AddComponent(currentE, s);

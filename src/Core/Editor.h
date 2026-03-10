@@ -27,6 +27,7 @@ public:
   void DrawSceneView();
   void DrawGameView();
   void DrawMenuBar();
+  void LoadScene(const std::string &path);
 
   // Script editor
   std::vector<ScriptEditorTab> openScriptTabs;

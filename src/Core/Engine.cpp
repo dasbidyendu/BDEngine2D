@@ -10,7 +10,6 @@
 #include "Utils/Logger.h"
 #include "raygui.h"
 
-
 Engine::Engine(int width, int height, const std::string &title)
     : screenWidth(width), screenHeight(height), windowTitle(title) {
 
@@ -89,7 +88,9 @@ void Engine::Exit() { isRunning = false; }
 
 void Engine::LoadConfig() {
   TraceLog(LOG_INFO, "CONFIG: Loading EditorConfig.ini...");
-  std::ifstream file("EditorConfig.ini");
+  std::string configPath =
+      (std::filesystem::path(engineRootPath) / "EditorConfig.ini").string();
+  std::ifstream file(configPath);
 
   int targetWidth = 1280;
   int targetHeight = 720;
@@ -112,6 +113,9 @@ void Engine::LoadConfig() {
           targetWidth = std::stoi(value);
         if (key == "ScreenHeight")
           targetHeight = std::stoi(value);
+        if (key.find("RecentProject") == 0) {
+          recentProjects.push_back(value);
+        }
       }
     }
     file.close();
@@ -129,7 +133,9 @@ void Engine::LoadConfig() {
 }
 
 void Engine::SaveConfig() {
-  std::ofstream file("EditorConfig.ini");
+  std::string configPath =
+      (std::filesystem::path(engineRootPath) / "EditorConfig.ini").string();
+  std::ofstream file(configPath);
   if (file.is_open()) {
     file << "ScreenWidth=" << screenWidth << "\n";
     file << "ScreenHeight=" << screenHeight << "\n";
@@ -137,6 +143,16 @@ void Engine::SaveConfig() {
     file << "LastFont=" << lastFontPath << "\n";
     file << "ShowGrid=" << (showGrid ? "true" : "false") << "\n";
     file << "GridSize=" << gridSize << "\n";
+
+    // Write up to 10 recent projects
+    int count = 0;
+    for (const auto &proj : recentProjects) {
+      if (count >= 10)
+        break;
+      file << "RecentProject" << count << "=" << proj << "\n";
+      count++;
+    }
+
     file.close();
   }
 }
@@ -235,9 +251,11 @@ void Engine::Update() {
   stats.frameCount++;
 
   if (IsKeyDown(KEY_LEFT_CONTROL) && IsKeyPressed(KEY_S)) {
-    SceneManager::SaveScene("assets/scenes/main.scene", *registry);
-    Logger::AddLog(LOG_LEVEL_SUCCESS,
-                   "SYSTEM: Scene saved to assets/scenes/main.scene");
+    if (!activeScenePath.empty()) {
+      SceneManager::SaveScene(activeScenePath, *registry);
+      Logger::AddLog(LOG_LEVEL_SUCCESS, "Saved scene to %s",
+                     activeScenePath.c_str());
+    }
   }
 
   // INPUT FOCUS KILL-SWITCH

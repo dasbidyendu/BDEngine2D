@@ -9,6 +9,7 @@
 
 #include "ECS/Systems.h"
 #include "ECS/UISystem.h"
+#include "Managers/ProjectManager.h"
 #include "Managers/ResourceManager.h"
 #include "Managers/ScriptSystem.h"
 #include "Physics.h"
@@ -26,6 +27,8 @@ public:
   void Run();
   void InitScripting();
   void Exit();
+
+  std::string engineRootPath;
 
   void ApplyTheme(const std::string &themeName);
   void SaveConfig();
@@ -60,6 +63,9 @@ public:
   std::string lastFontPath = "assets/fonts/Mecha.ttf";
 
   std::unique_ptr<ScriptEngine> scriptEngine;
+  ProjectManager projectManager;
+  std::vector<std::string> recentProjects;
+
   DebugStats stats;
 
   RenderTexture2D viewportTarget;

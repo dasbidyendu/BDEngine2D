@@ -2,7 +2,9 @@
 #include "ECS/Registry.h"
 #include "ECS/UISystem.h"
 #include "Engine.h"
+#include "Managers/ProjectManager.h"
 #include "Managers/ResourceManager.h"
+#include "Managers/SceneManager.h"
 #include "Utils/AssetEntry.h"
 #include "Utils/AssetManager.h"
 #include "Utils/Logger.h"
@@ -17,6 +19,9 @@
 namespace fs = std::filesystem;
 
 void Editor::Update() {
+  if (!owner->projectManager.HasActiveProject())
+    return;
+
   // Asset rescan must run even when ImGui has mouse focus,
   // otherwise navigating folders in the browser never refreshes.
   static float refreshTimer = 0;
@@ -104,9 +109,9 @@ void Editor::Update() {
       if (true) { // Replaced legacy coordinate check
         auto &asset = owner->editorAssets[draggedAssetIndex];
         if (asset.isTexture) {
-          owner->assets.LoadTextureAsset(asset.name, asset.path);
+          owner->assets.LoadTextureAsset(asset.path, asset.path);
 
-          Texture2D tex = owner->assets.GetTexture(asset.name);
+          Texture2D tex = owner->assets.GetTexture(asset.path);
 
           Vector2 worldMouse = GetScreenToWorld2D(mousePos, owner->GetCamera());
           Vector2 snappedPos = {floor(worldMouse.x / 32) * 32,
@@ -121,7 +126,7 @@ void Editor::Update() {
           owner->registry->AddComponent(newEntity, t);
 
           SpriteComponent sprite;
-          sprite.texturePath = asset.name;
+          sprite.texturePath = asset.path;
           sprite.texture = tex;
           sprite.tint = WHITE;
           sprite.anchor = {0.5f, 0.5f};
@@ -180,7 +185,7 @@ void Editor::Update() {
     // Rescan logic moved to top of Update() so it runs
     // even when ImGui has mouse focus (e.g. clicking in browser)
   }
-}
+};
 void Editor::OpenScriptEditor(const std::string &path) {
   // If already open, just mark it visible and focus it
   for (auto &tab : openScriptTabs) {
@@ -442,6 +447,105 @@ void Editor::DrawTransportBar() {
 }
 
 void Editor::Render() {
+  if (!owner->projectManager.HasActiveProject()) {
+    // Draw Project Hub
+    ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(),
+                            ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+    ImGui::SetNextWindowSize(ImVec2(600, 400), ImGuiCond_Always);
+
+    ImGuiWindowFlags flags =
+        ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize |
+        ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoDocking |
+        ImGuiWindowFlags_NoMove;
+
+    if (ImGui::Begin("BDEngine - Project Hub", nullptr, flags)) {
+      ImGui::Columns(2, "HubColumns", false);
+      ImGui::SetColumnWidth(0, 150);
+
+      ImGui::Text("Actions");
+      ImGui::Separator();
+
+      if (ImGui::Button("New Project", ImVec2(-1, 0))) {
+        ImGui::OpenPopup("CreateNewProjectPopup");
+      }
+      if (ImGui::Button("Load Project", ImVec2(-1, 0))) {
+        // TODO: Implement file dialog if needed, or rely on recent.
+        // For now we will rely on recent projects.
+      }
+
+      if (ImGui::BeginPopupModal("CreateNewProjectPopup", NULL,
+                                 ImGuiWindowFlags_AlwaysAutoResize)) {
+        static char nameBuf[64] = "MyProject";
+        static char dirBuf[256] = "C:/BDEngineProjects";
+
+        ImGui::InputText("Project Name", nameBuf, 64);
+        ImGui::InputText("Directory", dirBuf, 256);
+
+        if (ImGui::Button("Create", ImVec2(120, 0))) {
+          if (owner->projectManager.CreateProject(dirBuf, nameBuf)) {
+            auto active = owner->projectManager.GetActiveProject();
+            owner->recentProjects.emplace(owner->recentProjects.begin(),
+                                          active.path);
+            if (owner->recentProjects.size() > 10)
+              owner->recentProjects.pop_back();
+            owner->SaveConfig();
+
+            fs::current_path(fs::path(active.path).parent_path());
+
+            // Load fresh scene
+            SceneManager::LoadScene(active.startScene, *owner->registry, owner);
+            owner->activeScenePath = active.startScene;
+
+            ImGui::CloseCurrentPopup();
+          }
+        }
+        ImGui::SetItemDefaultFocus();
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel", ImVec2(120, 0))) {
+          ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+      }
+
+      ImGui::NextColumn();
+
+      ImGui::Text("Recent Projects");
+      ImGui::Separator();
+
+      if (ImGui::BeginChild("RecentList", ImVec2(0, 0), true)) {
+        for (const auto &projPath : owner->recentProjects) {
+          std::string label =
+              fs::path(projPath).stem().string() + "\n" + projPath;
+          if (ImGui::Selectable(label.c_str(), false, 0, ImVec2(0, 40))) {
+            if (owner->projectManager.LoadProject(projPath)) {
+              // Project loaded successfully. Remove and insert to front of
+              // recent.
+              auto it = std::find(owner->recentProjects.begin(),
+                                  owner->recentProjects.end(), projPath);
+              if (it != owner->recentProjects.end()) {
+                owner->recentProjects.erase(it);
+              }
+              owner->recentProjects.emplace(owner->recentProjects.begin(),
+                                            projPath);
+              owner->SaveConfig();
+
+              // Load the project start scene
+              SceneManager::LoadScene(
+                  owner->projectManager.GetActiveProject().startScene,
+                  *owner->registry, owner);
+              owner->activeScenePath =
+                  owner->projectManager.GetActiveProject().startScene;
+            }
+          }
+        }
+      }
+      ImGui::EndChild();
+
+      ImGui::Columns(1);
+    }
+    ImGui::End();
+    return;
+  }
   DrawTransportBar();
   DrawMenuBar(); // Handles its own BeginMenuBar/EndMenuBar
 
@@ -547,7 +651,12 @@ void Editor::Render() {
 void Editor::DrawMenuBar() {
   if (ImGui::BeginMenuBar()) {
     if (ImGui::BeginMenu("File")) {
-      if (ImGui::MenuItem("Save Scene", "Ctrl+S")) { /* Logic */
+      if (ImGui::MenuItem("Save Scene", "Ctrl+S")) {
+        if (!owner->activeScenePath.empty()) {
+          SceneManager::SaveScene(owner->activeScenePath, *owner->registry);
+          Logger::AddLog(LOG_LEVEL_SUCCESS, "Saved scene to %s",
+                         owner->activeScenePath.c_str());
+        }
       }
       if (ImGui::MenuItem("Exit")) {
         owner->Exit();
@@ -557,6 +666,16 @@ void Editor::DrawMenuBar() {
 
     if (ImGui::BeginMenu("Edit")) {
       if (ImGui::MenuItem("Undo", "Ctrl+Z")) {
+      }
+      ImGui::EndMenu();
+    }
+
+    if (ImGui::BeginMenu("Project")) {
+      if (ImGui::MenuItem("Close Project")) {
+        owner->projectManager.CloseProject();
+        owner->registry->Clear();
+        fs::current_path(owner->engineRootPath);
+        owner->activeScenePath = "";
       }
       ImGui::EndMenu();
     }
@@ -1210,7 +1329,21 @@ void DrawAssetBrowser(std::vector<AssetEntry> &allAssets,
         ImGui::BeginGroup();
         // Icon / Preview
         if (asset.isFolder) {
-          ImGui::Button("FOLDER", ImVec2(iconSize, iconSize));
+          // Procedural folder icon
+          static Texture2D folderIcon = {0};
+          if (folderIcon.id == 0) {
+            Image img = GenImageColor(40, 40, BLANK);
+            ImageDrawRectangle(&img, 2, 8, 36, 28,
+                               {255, 200, 50, 255}); // Folder body
+            ImageDrawRectangle(&img, 2, 4, 16, 6,
+                               {255, 200, 50, 255}); // Folder tab
+            ImageDrawRectangleLines(&img, {2, 8, 36, 28}, 1,
+                                    {200, 150, 30, 255});
+            folderIcon = LoadTextureFromImage(img);
+            UnloadImage(img);
+          }
+          rlImGuiImage(&folderIcon);
+
           if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0)) {
             newPath = asset.path;
           }
@@ -1218,12 +1351,14 @@ void DrawAssetBrowser(std::vector<AssetEntry> &allAssets,
           rlImGuiImage(&asset.preview);
         } else {
           ImGui::Button("FILE", ImVec2(iconSize, iconSize));
-          // Double-click .lua files to open in script editor
+          // Double-click files
           if (!asset.isFolder && ImGui::IsItemHovered() &&
               ImGui::IsMouseDoubleClicked(0)) {
             std::string ext = fs::path(asset.path).extension().string();
             if (ext == ".lua" && editor) {
               editor->OpenScriptEditor(asset.path);
+            } else if (ext == ".scene" && editor) {
+              editor->LoadScene(asset.path);
             }
           }
         }
@@ -1261,6 +1396,13 @@ void DrawAssetBrowser(std::vector<AssetEntry> &allAssets,
 }
 
 } // namespace EditorSystem
+
+void Editor::LoadScene(const std::string &path) {
+  SceneManager::LoadScene(path, *owner->registry, owner);
+  owner->activeScenePath = path;
+  Logger::AddLog(LOG_LEVEL_INFO, "Loaded scene: %s", path.c_str());
+}
+
 void Editor::DrawConsole() {
   ImGui::SetNextWindowSize(ImVec2(500, 400), ImGuiCond_FirstUseEver);
   if (!ImGui::Begin("Console", &showConsole, ImGuiWindowFlags_MenuBar)) {
