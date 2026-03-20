@@ -12,6 +12,7 @@
 #include "Managers/ProjectManager.h"
 #include "Managers/ResourceManager.h"
 #include "Managers/ScriptSystem.h"
+#include "Graphics/RenderPipeline.h"
 #include "Physics.h"
 #include "Profiler.h"
 #include "Utils/AssetEntry.h"
@@ -69,7 +70,7 @@ public:
   DebugStats stats;
 
   RenderTexture2D viewportTarget;
-  RenderTexture2D gameTarget;
+  std::unique_ptr<RenderPipeline> renderPipeline;
 
 private:
   void Update();

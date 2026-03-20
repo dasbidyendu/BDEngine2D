@@ -20,7 +20,7 @@ Engine::Engine(int width, int height, const std::string &title)
 
   InitWindow(screenWidth, screenHeight, windowTitle.c_str());
   viewportTarget = LoadRenderTexture(screenWidth, screenHeight);
-  gameTarget = LoadRenderTexture(screenWidth, screenHeight);
+  renderPipeline = std::make_unique<RenderPipeline>(screenWidth, screenHeight);
   /*int monitor = GetCurrentMonitor();
   if (!IsWindowFullscreen()) {
       SetWindowSize(GetMonitorWidth(monitor), GetMonitorHeight(monitor));
@@ -56,7 +56,7 @@ Engine::Engine(int width, int height, const std::string &title)
     scriptEngine = std::make_unique<ScriptEngine>();
     // Only init if pointer is valid
     if (scriptEngine) {
-      scriptEngine->Init(*registry, &camera);
+      scriptEngine->Init(*registry, &camera, &assets);
       Logger::AddLog(LOG_LEVEL_INFO, "SYSTEM: Script Engine Ready.");
     }
   } catch (...) {
@@ -79,7 +79,6 @@ Engine::~Engine() {
   rlImGuiShutdown();
 #endif
   UnloadRenderTexture(viewportTarget);
-  UnloadRenderTexture(gameTarget);
   CloseWindow();
   Logger::Shutdown();
 }
@@ -246,6 +245,7 @@ void Engine::Update() {
   if (IsWindowResized() || IsWindowFullscreen()) {
     screenWidth = GetScreenWidth();
     screenHeight = GetScreenHeight();
+    renderPipeline->Resize(screenWidth, screenHeight);
   }
 
   stats.frameCount++;
@@ -351,9 +351,19 @@ void Engine::Update() {
         for (Entity i : registry->activeEntities) {
           if (registry->HasComponent(i, COMP_SCRIPT)) {
             auto &script = registry->scripts[i];
-            for (const std::string &path : script.scriptPaths) {
-              if (!path.empty()) {
-                scriptEngine->Execute(i, path, dt);
+            
+            // Migration for legacy scripts if any
+            if (script.instances.empty() && !script.scriptPaths.empty()) {
+                for (const auto& path : script.scriptPaths) {
+                    ScriptInstanceData inst;
+                    inst.path = path;
+                    script.instances.push_back(inst);
+                }
+            }
+
+            for (auto &inst : script.instances) {
+              if (!inst.path.empty()) {
+                scriptEngine->Execute(i, inst, dt);
               }
             }
           }
@@ -367,26 +377,44 @@ void Engine::Update() {
 }
 
 void Engine::Render() {
-  // 1. DRAW RAW GAME TO gameTarget
-  BeginTextureMode(gameTarget);
-  ClearBackground(currentTheme.background);
-  BeginMode2D(camera);
-  RenderSystem::Draw(*registry);
-  DebugSystem::PhysicsDebug(*registry, camera);
-  EndMode2D();
-  EndTextureMode();
+  // 1. EXECUTE RENDER PIPELINE
+  Camera2D gameCamera = camera; // default to editor camera
+  
+  // Search for primary camera in ECS
+  for (Entity i : registry->activeEntities) {
+    if (registry->HasComponent(i, COMP_CAMERA)) {
+      auto &camComp = registry->cameras[i];
+      if (camComp.isPrimary) {
+        gameCamera.zoom = camComp.zoom;
+        gameCamera.offset = camComp.offset;
+        gameCamera.target = camComp.target;
+        gameCamera.rotation = camComp.rotation;
+
+        // If the entity has a Transform component, use its position as the target
+        if (registry->HasComponent(i, COMP_TRANSFORM)) {
+          gameCamera.target = registry->transforms[i].position;
+        }
+        break;
+      }
+    }
+  }
+
+  renderPipeline->Execute(*registry, assets, gameCamera, currentTheme.background);
 
   // 2. DRAW SCENE VIEW (With Overlays) TO viewportTarget
   BeginTextureMode(viewportTarget);
   ClearBackground(currentTheme.background);
 
-  // Draw the clean game view first
-  Rectangle src = {0, 0, (float)gameTarget.texture.width,
-                   (float)-gameTarget.texture.height};
-  Vector2 pos = {0, 0};
-  DrawTextureRec(gameTarget.texture, src, pos, WHITE);
-
-  BeginMode2D(camera);
+  Camera2D sceneCamera = camera;
+  // Offset the scene camera by the center of the viewport target
+  sceneCamera.offset = { (float)viewportTarget.texture.width / 2.0f, (float)viewportTarget.texture.height / 2.0f };
+  
+  BeginMode2D(sceneCamera);
+  
+  // Render the world for the editor view
+  RenderSystem::Draw(*registry);
+  DebugSystem::PhysicsDebug(*registry, camera);
+  
   if (showGrid) {
     EditorSystem::DrawGrid(gridSize, camera, screenWidth, screenHeight,
                            gridColor);
@@ -448,10 +476,11 @@ void Engine::Render() {
 
   // 3. DRAW GAME VIEWPORT (If not handled by ImGui window)
   if (!isEditorMode) {
+    RenderTexture2D finalTarget = renderPipeline->GetOutputTexture();
     DrawTexturePro(
-        gameTarget.texture,
-        Rectangle{0, 0, (float)gameTarget.texture.width,
-                  (float)-gameTarget.texture.height},
+        finalTarget.texture,
+        Rectangle{0, 0, (float)finalTarget.texture.width,
+                  (float)-finalTarget.texture.height},
         Rectangle{0, 0, (float)GetScreenWidth(), (float)GetScreenHeight()},
         Vector2{0, 0}, 0, WHITE);
 

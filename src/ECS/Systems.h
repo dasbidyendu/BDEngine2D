@@ -39,11 +39,67 @@ namespace AnimationSystem {
 }
 
 namespace RenderSystem {
+    inline void UpdateShaders(Registry& reg, Camera2D& cam) {
+        struct LightInfo {
+            int type;
+            Color color;
+            Vector2 position;
+            float radius;
+            float intensity;
+        };
+        std::vector<LightInfo> activeLights;
+        for (Entity i : reg.activeEntities) {
+            if (reg.HasComponent(i, COMP_LIGHT) && reg.HasComponent(i, COMP_TRANSFORM)) {
+                auto& l = reg.lights[i];
+                auto& t = reg.transforms[i];
+                activeLights.push_back({l.type, l.color, t.position, l.radius, l.intensity});
+                if (activeLights.size() >= 16) break;
+            }
+        }
+
+        std::vector<unsigned int> updatedShaders;
+        for (Entity i : reg.activeEntities) {
+            if (reg.HasComponent(i, COMP_MATERIAL)) {
+                auto& mat = reg.materials[i];
+                if (mat.shader.id == 0) continue;
+
+                if (std::find(updatedShaders.begin(), updatedShaders.end(), mat.shader.id) == updatedShaders.end()) {
+                    int numLightsLoc = GetShaderLocation(mat.shader, "numLights");
+                    if (numLightsLoc != -1) {
+                        int num = (int)activeLights.size();
+                        SetShaderValue(mat.shader, numLightsLoc, &num, SHADER_UNIFORM_INT);
+                        
+                        for (int j = 0; j < num; j++) {
+                            int typeLoc = GetShaderLocation(mat.shader, TextFormat("lights[%i].type", j));
+                            int colorLoc = GetShaderLocation(mat.shader, TextFormat("lights[%i].color", j));
+                            int posLoc = GetShaderLocation(mat.shader, TextFormat("lights[%i].position", j));
+                            int radiusLoc = GetShaderLocation(mat.shader, TextFormat("lights[%i].radius", j));
+                            int intensityLoc = GetShaderLocation(mat.shader, TextFormat("lights[%i].intensity", j));
+
+                            SetShaderValue(mat.shader, typeLoc, &activeLights[j].type, SHADER_UNIFORM_INT);
+                            float color[4] = { activeLights[j].color.r / 255.0f, activeLights[j].color.g / 255.0f, activeLights[j].color.b / 255.0f, activeLights[j].color.a / 255.0f };
+                            SetShaderValue(mat.shader, colorLoc, color, SHADER_UNIFORM_VEC4);
+                            SetShaderValue(mat.shader, posLoc, &activeLights[j].position, SHADER_UNIFORM_VEC2);
+                            SetShaderValue(mat.shader, radiusLoc, &activeLights[j].radius, SHADER_UNIFORM_FLOAT);
+                            SetShaderValue(mat.shader, intensityLoc, &activeLights[j].intensity, SHADER_UNIFORM_FLOAT);
+                        }
+                    }
+                    updatedShaders.push_back(mat.shader.id);
+                }
+            }
+        }
+    }
+
     inline void Draw(Registry& reg) {
         for (Entity i :reg.activeEntities){
             if (reg.HasComponent(i, COMP_TRANSFORM) && reg.HasComponent(i, COMP_SPRITE)) {
                 auto& t = reg.transforms[i];
                 auto& s = reg.sprites[i];
+
+                bool hasMaterial = reg.HasComponent(i, COMP_MATERIAL);
+                if (hasMaterial && reg.materials[i].shader.id != 0) {
+                    BeginShaderMode(reg.materials[i].shader);
+                }
 
                 float frameWidth = (float)s.texture.width;
                 float frameHeight = (float)s.texture.height;
@@ -80,6 +136,10 @@ namespace RenderSystem {
                 };
 
                 DrawTexturePro(s.texture, sourceRec, destRec, origin, t.rotation, s.tint);
+
+                if (hasMaterial && reg.materials[i].shader.id != 0) {
+                    EndShaderMode();
+                }
             }
         }
     }
@@ -169,7 +229,6 @@ namespace ControlSystem {
 namespace DebugSystem {
 
     inline void PhysicsDebug(Registry& reg,Camera2D& cam) {
-        BeginMode2D(cam);
         for (Entity i : reg.activeEntities) {
             if (reg.HasComponent(i, COMP_CIRCLECOLLIDER) && reg.HasComponent(i,COMP_TRANSFORM)) {
 				auto& col = reg.circleColliders[i];
@@ -205,7 +264,6 @@ namespace DebugSystem {
                 }
             }
         }
-        EndMode2D();
     }
 
     inline void Draw(const Registry& reg, DebugStats& stats, int screenWidth) {

@@ -18,5 +18,8 @@ enum ComponentType : std::uint8_t {
   COMP_CIRCLECOLLIDER,
   COMP_BOXCOLLIDER,
   COMP_NAME,
+  COMP_MATERIAL,
+  COMP_LIGHT,
+  COMP_CAMERA,
   COMP_COUNT
 };

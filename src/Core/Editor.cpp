@@ -106,7 +106,7 @@ void Editor::Update() {
     }
   } else {
     if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON) && draggedAssetIndex != -1) {
-      if (true) { // Replaced legacy coordinate check
+      if (draggedAssetIndex < (int)owner->editorAssets.size()) {
         auto &asset = owner->editorAssets[draggedAssetIndex];
         if (asset.isTexture) {
           owner->assets.LoadTextureAsset(asset.path, asset.path);
@@ -240,7 +240,13 @@ void Editor::DrawScriptEditors() {
             tab.dirty = false;
             // Invalidate script cache so changes hot-reload
             if (owner->scriptEngine) {
-              owner->scriptEngine->scriptCache.erase(tab.filePath);
+              owner->scriptEngine->compiledScripts.erase(tab.filePath);
+              // Clear live instances to force reload
+              auto& live = owner->scriptEngine->liveInstances;
+              for (auto it = live.begin(); it != live.end(); ) {
+                if (it->first.second == tab.filePath) it = live.erase(it);
+                else ++it;
+              }
             }
           }
         }
@@ -266,7 +272,13 @@ void Editor::DrawScriptEditors() {
           out.close();
           tab.dirty = false;
           if (owner->scriptEngine) {
-            owner->scriptEngine->scriptCache.erase(tab.filePath);
+            owner->scriptEngine->compiledScripts.erase(tab.filePath);
+            // Clear live instances to force reload
+            auto& live = owner->scriptEngine->liveInstances;
+            for (auto it = live.begin(); it != live.end(); ) {
+              if (it->first.second == tab.filePath) it = live.erase(it);
+              else ++it;
+            }
           }
         }
       }
@@ -368,15 +380,16 @@ void Editor::DrawGameView() {
     ImVec2 size = ImGui::GetContentRegionAvail();
 
     // Dynamic Resolution Matching for Game View
-    if (size.x != owner->gameTarget.texture.width ||
-        size.y != owner->gameTarget.texture.height) {
+    RenderTexture2D finalTarget = owner->renderPipeline->GetOutputTexture();
+    if (size.x != finalTarget.texture.width ||
+        size.y != finalTarget.texture.height) {
       if (size.x > 0 && size.y > 0) {
-        UnloadRenderTexture(owner->gameTarget);
-        owner->gameTarget = LoadRenderTexture((int)size.x, (int)size.y);
+        owner->renderPipeline->Resize((int)size.x, (int)size.y);
       }
     }
 
-    rlImGuiImageRenderTexture(&owner->gameTarget);
+    finalTarget = owner->renderPipeline->GetOutputTexture();
+    rlImGuiImageRenderTexture(&finalTarget);
   }
   ImGui::End();
   ImGui::PopStyleVar();
@@ -568,6 +581,11 @@ void Editor::Render() {
     if (ImGui::Selectable(label.c_str(), isSelected)) {
       owner->selectedEntity = i;
     }
+  }
+
+  ImGui::Separator();
+  if (ImGui::Button("Create Entity", ImVec2(ImGui::GetContentRegionAvail().x, 25))) {
+    owner->registry->CreateEntity();
   }
   ImGui::End();
 
@@ -1044,6 +1062,16 @@ void DrawInspector(Entity e, Registry &reg, int screenWidth, int screenHeight,
       if (ImGui::CollapsingHeader("Scripts", ImGuiTreeNodeFlags_DefaultOpen)) {
         auto &sc = reg.scripts[e];
 
+        // Migration from legacy scriptPaths to instances
+        if (sc.instances.empty() && !sc.scriptPaths.empty()) {
+            for (const auto& path : sc.scriptPaths) {
+                ScriptInstanceData inst;
+                inst.path = path;
+                sc.instances.push_back(inst);
+            }
+            sc.scriptPaths.clear();
+        }
+
         // Drop target for adding scripts
         ImGui::TextDisabled("(Drop .lua files here to add)");
         if (ImGui::BeginDragDropTarget()) {
@@ -1052,30 +1080,95 @@ void DrawInspector(Entity e, Registry &reg, int screenWidth, int screenHeight,
             const char *path = (const char *)payload->Data;
             std::string sPath(path);
             if (fs::path(sPath).extension() == ".lua") {
-              if (std::find(sc.scriptPaths.begin(), sc.scriptPaths.end(),
-                            sPath) == sc.scriptPaths.end()) {
-                sc.scriptPaths.push_back(sPath);
+              bool found = false;
+              for (auto& inst : sc.instances) {
+                  if (inst.path == sPath) { found = true; break; }
+              }
+              if (!found) {
+                ScriptInstanceData inst;
+                inst.path = sPath;
+                sc.instances.push_back(inst);
+                if (engine->scriptEngine) {
+                    engine->scriptEngine->LoadScript(e, sc.instances.back());
+                }
               }
             }
           }
           ImGui::EndDragDropTarget();
         }
 
-        for (int i = 0; i < (int)sc.scriptPaths.size(); i++) {
+        for (int i = 0; i < (int)sc.instances.size(); i++) {
+          auto& inst = sc.instances[i];
           ImGui::PushID(i);
-          ImGui::BulletText("%s", GetFileName(sc.scriptPaths[i].c_str()));
-
-          // Edit button
-          ImGui::SameLine(ImGui::GetContentRegionAvail().x - 45);
+          
+          bool open = ImGui::TreeNodeEx(GetFileName(inst.path.c_str()), ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_Framed);
+          
+          // Edit button on the same line as header
+          ImGui::SameLine(ImGui::GetContentRegionAvail().x - 70);
           if (ImGui::SmallButton("Edit")) {
-            engine->editor->OpenScriptEditor(sc.scriptPaths[i]);
+            engine->editor->OpenScriptEditor(inst.path);
+          }
+
+          // Refresh button
+          ImGui::SameLine(ImGui::GetContentRegionAvail().x - 45);
+          if (ImGui::SmallButton("R")) {
+              if (engine->scriptEngine) {
+                  engine->scriptEngine->LoadScript(e, inst);
+              }
           }
 
           // Remove button
           ImGui::SameLine(ImGui::GetContentRegionAvail().x - 20);
           if (ImGui::Button("X")) {
-            sc.scriptPaths.erase(sc.scriptPaths.begin() + i);
+            sc.instances.erase(sc.instances.begin() + i);
             i--;
+            if (open) ImGui::TreePop();
+            ImGui::PopID();
+            continue;
+          }
+
+          if (open) {
+            if (inst.properties.size() > 0) {
+                if (BeginPropertyGrid((std::string("script_props_") + std::to_string(i)).c_str())) {
+                    for (auto& prop : inst.properties) {
+                        switch (prop.type) {
+                            case PROP_FLOAT:
+                                PropertyLabel(prop.name.c_str());
+                                ImGui::DragFloat((std::string("##") + prop.name).c_str(), &prop.floatValue, 0.1f);
+                                break;
+                            case PROP_INT:
+                                PropertyLabel(prop.name.c_str());
+                                ImGui::DragInt((std::string("##") + prop.name).c_str(), &prop.intValue);
+                                break;
+                            case PROP_BOOL:
+                                PropertyLabel(prop.name.c_str());
+                                ImGui::Checkbox((std::string("##") + prop.name).c_str(), &prop.boolValue);
+                                break;
+                            case PROP_STRING:
+                                {
+                                    PropertyLabel(prop.name.c_str());
+                                    char buf[256];
+                                    strncpy(buf, prop.stringValue.c_str(), 255);
+                                    buf[255] = '\0';
+                                    if (ImGui::InputText((std::string("##") + prop.name).c_str(), buf, 256)) {
+                                        prop.stringValue = buf;
+                                    }
+                                }
+                                break;
+                            case PROP_VECTOR2:
+                                DrawVec2Control(prop.name, prop.vectorValue);
+                                break;
+                            case PROP_COLOR:
+                                DrawColorControl(prop.name, prop.colorValue);
+                                break;
+                        }
+                    }
+                    EndPropertyGrid();
+                }
+            } else {
+                ImGui::TextDisabled("  No serializable properties registered.");
+            }
+            ImGui::TreePop();
           }
           ImGui::PopID();
         }
@@ -1091,24 +1184,31 @@ void DrawInspector(Entity e, Registry &reg, int screenWidth, int screenHeight,
           std::string name(newScriptName);
           if (!name.empty()) {
             std::string scriptPath = "assets/scripts/" + name + ".lua";
-            // Create directories if needed
             fs::create_directories(fs::path(scriptPath).parent_path());
-            // Write boilerplate
             std::ofstream out(scriptPath);
             if (out.is_open()) {
               out << "-- " << name << ".lua\n";
+              out << "function OnStart(entity)\n";
+              out << "    -- RegisterProperty(\"speed\", 5.0)\n";
+              out << "end\n\n";
               out << "function OnUpdate(entity, dt)\n";
-              out << "    -- Your code here\n";
+              out << "    -- your code here\n";
               out << "end\n";
               out.close();
 
-              // Add to entity
-              if (std::find(sc.scriptPaths.begin(), sc.scriptPaths.end(),
-                            scriptPath) == sc.scriptPaths.end()) {
-                sc.scriptPaths.push_back(scriptPath);
+              bool found = false;
+              for (auto& inst : sc.instances) {
+                  if (inst.path == scriptPath) { found = true; break; }
+              }
+              if (!found) {
+                ScriptInstanceData inst;
+                inst.path = scriptPath;
+                sc.instances.push_back(inst);
+                if (engine->scriptEngine) {
+                    engine->scriptEngine->LoadScript(e, sc.instances.back());
+                }
               }
 
-              // Open in editor
               engine->editor->OpenScriptEditor(scriptPath);
               newScriptName[0] = '\0';
             }
@@ -1163,6 +1263,24 @@ void DrawInspector(Entity e, Registry &reg, int screenWidth, int screenHeight,
           DrawVec2Control("Offset", bc.offset);
           PropertyLabel("Show Debug");
           ImGui::Checkbox("##ShowDebugB", &bc.debugDraw);
+          EndPropertyGrid();
+        }
+      }
+    }
+
+    // CAMERA COMPONENT
+    if (reg.HasComponent(e, COMP_CAMERA)) {
+      if (ImGui::CollapsingHeader("Camera", ImGuiTreeNodeFlags_DefaultOpen)) {
+        auto &cam = reg.cameras[e];
+        if (BeginPropertyGrid("camera_grid")) {
+          PropertyLabel("Zoom");
+          ImGui::DragFloat("##CamZoom", &cam.zoom, 0.05f, 0.1f, 10.0f);
+          DrawVec2Control("Offset", cam.offset);
+          DrawVec2Control("Target", cam.target);
+          PropertyLabel("Rotation");
+          ImGui::DragFloat("##CamRot", &cam.rotation, 0.5f);
+          PropertyLabel("Primary");
+          ImGui::Checkbox("##CamPrimary", &cam.isPrimary);
           EndPropertyGrid();
         }
       }
@@ -1239,17 +1357,30 @@ void DrawInspector(Entity e, Registry &reg, int screenWidth, int screenHeight,
       }
       if (!reg.HasComponent(e, COMP_CIRCLECOLLIDER) &&
           ImGui::MenuItem("Circle Collider")) {
-        reg.AddComponent(e, CircleColliderComponent{});
+        CircleColliderComponent cc;
+        if (reg.HasComponent(e, COMP_SPRITE)) {
+            auto& s = reg.sprites[e];
+            cc.radius = (float)std::max(s.texture.width, s.texture.height) * 0.5f;
+        }
+        reg.AddComponent(e, cc);
       }
       if (!reg.HasComponent(e, COMP_BOXCOLLIDER) &&
           ImGui::MenuItem("Box Collider")) {
-        reg.AddComponent(e, BoxColliderComponent{});
+        BoxColliderComponent bc;
+        if (reg.HasComponent(e, COMP_SPRITE)) {
+            auto& s = reg.sprites[e];
+            bc.size = {(float)s.texture.width, (float)s.texture.height};
+        }
+        reg.AddComponent(e, bc);
       }
       if (!reg.HasComponent(e, COMP_INPUT) && ImGui::MenuItem("Input")) {
         reg.AddComponent(e, InputComponent{});
       }
       if (!reg.HasComponent(e, COMP_UICANVAS) && ImGui::MenuItem("UI Canvas")) {
         reg.AddComponent(e, UICanvasComponent{});
+      }
+      if (!reg.HasComponent(e, COMP_CAMERA) && ImGui::MenuItem("Camera")) {
+        reg.AddComponent(e, CameraComponent{});
       }
       if (!reg.HasComponent(e, COMP_SPRITE_ANIMATION) &&
           ImGui::MenuItem("Animation")) {

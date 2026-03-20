@@ -12,6 +12,8 @@ set(SOURCES
     src/Core/Physics.cpp
     src/Managers/ResourceManager.cpp
     src/Managers/SceneManager.cpp
+    src/Graphics/RenderPipeline.cpp
+    src/Graphics/ShaderBuilder.cpp
     External/imgui/imgui/imgui.cpp
     External/imgui/imgui/imgui_demo.cpp
     External/imgui/imgui/imgui_draw.cpp
@@ -42,7 +44,11 @@ target_link_libraries(BDEngine PRIVATE
     winmm
 )
 
-# Compile definitions
+# Compile definitions and flags
+if(MSVC)
+    target_compile_options(BDEngine PRIVATE /bigobj)
+endif()
+
 target_compile_definitions(BDEngine PRIVATE 
     _CRT_SECURE_NO_WARNINGS
     SOL_ALL_SAFETIES_ON=1

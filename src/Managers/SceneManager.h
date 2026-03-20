@@ -21,6 +21,10 @@ public:
 
       file << "ENTITY " << i << "\n";
 
+      if (reg.HasComponent(i, COMP_NAME)) {
+        file << "NAME " << std::quoted(reg.names[i].name) << "\n";
+      }
+
       if (reg.HasComponent(i, COMP_TRANSFORM)) {
         auto &t = reg.transforms[i];
         file << "TRANSFORM " << t.position.x << " " << t.position.y << " "
@@ -42,11 +46,36 @@ public:
 
       if (reg.HasComponent(i, COMP_SCRIPT)) {
         auto &sc = reg.scripts[i];
-        file << "SCRIPTS " << sc.scriptPaths.size();
-        for (const auto &path : sc.scriptPaths) {
-          file << " " << std::quoted(path);
+        file << "SCRIPTS " << sc.instances.size() << "\n";
+        for (const auto &inst : sc.instances) {
+          file << "INSTANCE " << std::quoted(inst.path) << " "
+               << inst.properties.size() << "\n";
+          for (const auto &p : inst.properties) {
+            file << "PROPERTY " << (int)p.type << " " << std::quoted(p.name)
+                 << " ";
+            switch (p.type) {
+            case PROP_FLOAT:
+              file << p.floatValue << "\n";
+              break;
+            case PROP_INT:
+              file << p.intValue << "\n";
+              break;
+            case PROP_BOOL:
+              file << (p.boolValue ? 1 : 0) << "\n";
+              break;
+            case PROP_STRING:
+              file << std::quoted(p.stringValue) << "\n";
+              break;
+            case PROP_VECTOR2:
+              file << p.vectorValue.x << " " << p.vectorValue.y << "\n";
+              break;
+            case PROP_COLOR:
+              file << (int)p.colorValue.r << " " << (int)p.colorValue.g << " "
+                   << (int)p.colorValue.b << " " << (int)p.colorValue.a << "\n";
+              break;
+            }
+          }
         }
-        file << "\n";
       }
 
       if (reg.HasComponent(i, COMP_UI)) {
@@ -55,6 +84,13 @@ public:
              << ui.offset.x << " " << ui.offset.y << " " << ui.size.x << " "
              << ui.size.y << " " << (int)ui.color.r << " " << (int)ui.color.g
              << " " << (int)ui.color.b << " " << (int)ui.color.a << "\n";
+      }
+
+      if (reg.HasComponent(i, COMP_CAMERA)) {
+        auto &cam = reg.cameras[i];
+        file << "CAMERA " << cam.zoom << " " << cam.offset.x << " "
+             << cam.offset.y << " " << cam.target.x << " " << cam.target.y << " "
+             << cam.rotation << " " << (cam.isPrimary ? 1 : 0) << "\n";
       }
 
       file << "END\n";
@@ -89,6 +125,10 @@ public:
                       currentE) == reg.activeEntities.end()) {
           reg.activeEntities.push_back(currentE);
         }
+      } else if (cmd == "NAME") {
+        NameComponent n;
+        ss >> std::quoted(n.name);
+        reg.AddComponent(currentE, n);
       } else if (cmd == "TRANSFORM") {
         TransformComponent t;
         ss >> t.position.x >> t.position.y >> t.scale.x >> t.scale.y >>
@@ -116,14 +156,56 @@ public:
         v.pad[0] = 0.0f;
         v.pad[1] = 0.0f;
         reg.AddComponent(currentE, v);
-      } else if (cmd == "SCRIPTS") {
+      } else if (cmd == "SCRIPTS_LEGACY") {
         int count;
         ss >> count;
         ScriptComponent sc;
         for (int j = 0; j < count; j++) {
           std::string p;
           ss >> std::quoted(p);
-          sc.scriptPaths.push_back(p);
+          ScriptInstanceData inst;
+          inst.path = p;
+          sc.instances.push_back(inst);
+        }
+        reg.AddComponent(currentE, sc);
+      } else if (cmd == "SCRIPTS") {
+        int instCount;
+        ss >> instCount;
+        ScriptComponent sc;
+        for (int j = 0; j < instCount; j++) {
+          std::string instLine;
+          std::getline(file, instLine);
+          std::stringstream ssInst(instLine);
+          std::string instCmd;
+          ssInst >> instCmd;
+          if (instCmd == "INSTANCE") {
+            ScriptInstanceData inst;
+            int propCount;
+            ssInst >> std::quoted(inst.path) >> propCount;
+            for (int k = 0; k < propCount; k++) {
+              std::string propLine;
+              std::getline(file, propLine);
+              std::stringstream ssProp(propLine);
+              std::string propCmd;
+              ssProp >> propCmd;
+              if (propCmd == "PROPERTY") {
+                ScriptProperty p;
+                int type;
+                ssProp >> type >> std::quoted(p.name);
+                p.type = (ScriptPropertyType)type;
+                switch (p.type) {
+                  case PROP_FLOAT: ssProp >> p.floatValue; break;
+                  case PROP_INT: ssProp >> p.intValue; break;
+                  case PROP_BOOL: { int b; ssProp >> b; p.boolValue = (b == 1); } break;
+                  case PROP_STRING: ssProp >> std::quoted(p.stringValue); break;
+                  case PROP_VECTOR2: ssProp >> p.vectorValue.x >> p.vectorValue.y; break;
+                  case PROP_COLOR: { int r, g, b, a; ssProp >> r >> g >> b >> a; p.colorValue = {(unsigned char)r, (unsigned char)g, (unsigned char)b, (unsigned char)a}; } break;
+                }
+                inst.properties.push_back(p);
+              }
+            }
+            sc.instances.push_back(inst);
+          }
         }
         reg.AddComponent(currentE, sc);
       } else if (cmd == "UI") {
@@ -135,6 +217,13 @@ public:
         ui.color = {(unsigned char)r, (unsigned char)g, (unsigned char)b,
                     (unsigned char)a};
         reg.AddComponent(currentE, ui);
+      } else if (cmd == "CAMERA") {
+        CameraComponent cam;
+        int primary;
+        ss >> cam.zoom >> cam.offset.x >> cam.offset.y >> cam.target.x >>
+            cam.target.y >> cam.rotation >> primary;
+        cam.isPrimary = (primary == 1);
+        reg.AddComponent(currentE, cam);
       }
     }
     reg.SetNextEntity(maxE);

@@ -33,8 +33,35 @@ struct InputComponent {
   bool up, down, left, right;
 };
 
+enum ScriptPropertyType {
+    PROP_FLOAT,
+    PROP_INT,
+    PROP_BOOL,
+    PROP_STRING,
+    PROP_VECTOR2,
+    PROP_COLOR
+};
+
+struct ScriptProperty {
+    ScriptPropertyType type;
+    std::string name;
+    float floatValue = 0.0f;
+    int intValue = 0;
+    bool boolValue = false;
+    std::string stringValue = "";
+    Vector2 vectorValue = {0, 0};
+    Color colorValue = WHITE;
+};
+
+struct ScriptInstanceData {
+    std::string path;
+    std::vector<ScriptProperty> properties;
+    bool started = false;
+};
+
 struct ScriptComponent {
-  std::vector<std::string> scriptPaths;
+  std::vector<ScriptInstanceData> instances;
+  std::vector<std::string> scriptPaths; // Legacy, but keeping for compatibility if needed. Actually let's just use instances.
   bool isInitialized = false;
 };
 
@@ -116,4 +143,28 @@ struct BoxColliderComponent {
   Vector2 offset = {0, 0};
   bool isColliding = false;
   bool debugDraw = true;
+};
+
+struct MaterialComponent {
+  Shader shader = {0};
+  std::string shaderName = "";
+  Color color = WHITE;
+  Texture2D texture = {0};
+  // We can add arbitrary float/vec properties here in the future via a map if needed, 
+  // but for now we'll stick to a primary color and texture to keep it lightweight.
+};
+
+struct LightComponent {
+  int type = 0; // 0 = Point, 1 = Directional
+  Color color = WHITE;
+  float intensity = 1.0f;
+  float radius = 100.0f;
+};
+
+struct CameraComponent {
+  float zoom = 1.0f;
+  Vector2 offset = {0, 0};
+  Vector2 target = {0, 0};
+  float rotation = 0.0f;
+  bool isPrimary = true;
 };

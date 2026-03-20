@@ -21,6 +21,9 @@ public:
     rigidPhysicsComponents.resize(MAX_ENTITIES);
     circleColliders.resize(MAX_ENTITIES);
     boxColliders.resize(MAX_ENTITIES);
+    materials.resize(MAX_ENTITIES);
+    lights.resize(MAX_ENTITIES);
+    cameras.resize(MAX_ENTITIES);
   }
 
   Entity CreateEntity() {
@@ -52,70 +55,102 @@ public:
   }
 
   void AddComponent(Entity entity, const NameComponent &c) {
+    if (entity < 0 || entity >= MAX_ENTITIES) return;
     names[entity] = c;
     entityMasks[entity].set(COMP_NAME);
   }
 
   void AddComponent(Entity entity, const TransformComponent &c) {
+    if (entity < 0 || entity >= MAX_ENTITIES) return;
     transforms[entity] = c;
     entityMasks[entity].set(COMP_TRANSFORM);
   }
 
   void AddComponent(Entity entity, const SpriteComponent &c) {
+    if (entity < 0 || entity >= MAX_ENTITIES) return;
     sprites[entity] = c;
     entityMasks[entity].set(COMP_SPRITE);
   }
 
   void AddComponent(Entity entity, const VelocityComponent &c) {
+    if (entity < 0 || entity >= MAX_ENTITIES) return;
     velocities[entity] = c;
     entityMasks[entity].set(COMP_VELOCITY);
   }
 
   void AddComponent(Entity entity, const InputComponent &c) {
+    if (entity < 0 || entity >= MAX_ENTITIES) return;
     inputComponents[entity] = c;
     entityMasks[entity].set(COMP_INPUT);
   }
 
   void AddComponent(Entity entity, const UIComponent &c) {
+    if (entity < 0 || entity >= MAX_ENTITIES) return;
     uiComponents[entity] = c;
     entityMasks[entity].set(COMP_UI);
   }
 
   void AddComponent(Entity entity, const ScriptComponent &c) {
+    if (entity < 0 || entity >= MAX_ENTITIES) return;
     scripts[entity] = c;
     entityMasks[entity].set(COMP_SCRIPT);
   }
 
   void AddComponent(Entity entity, const UICanvasComponent &c) {
+    if (entity < 0 || entity >= MAX_ENTITIES) return;
     uiCanvases[entity] = c;
     entityMasks[entity].set(COMP_UICANVAS);
   }
 
   void AddComponent(Entity entity, const SpriteAnimationComponent &c) {
+    if (entity < 0 || entity >= MAX_ENTITIES) return;
     spriteAnimations[entity] = c;
     entityMasks[entity].set(COMP_SPRITE_ANIMATION);
   }
 
   void AddComponent(Entity entity, const RigidPhysicsComponent &c) {
+    if (entity < 0 || entity >= MAX_ENTITIES) return;
     rigidPhysicsComponents[entity] = c;
     entityMasks[entity].set(COMP_RIGIDPHYSICS);
   }
 
   void AddComponent(Entity entity, const CircleColliderComponent &c) {
+    if (entity < 0 || entity >= MAX_ENTITIES) return;
     circleColliders[entity] = c;
     entityMasks[entity].set(COMP_CIRCLECOLLIDER);
   }
 
   void AddComponent(Entity entity, const BoxColliderComponent &c) {
+    if (entity < 0 || entity >= MAX_ENTITIES) return;
     boxColliders[entity] = c;
     entityMasks[entity].set(COMP_BOXCOLLIDER);
   }
 
+  void AddComponent(Entity entity, const MaterialComponent &c) {
+    if (entity < 0 || entity >= MAX_ENTITIES) return;
+    materials[entity] = c;
+    entityMasks[entity].set(COMP_MATERIAL);
+  }
+
+  void AddComponent(Entity entity, const LightComponent &c) {
+    if (entity < 0 || entity >= MAX_ENTITIES) return;
+    lights[entity] = c;
+    entityMasks[entity].set(COMP_LIGHT);
+  }
+
+  void AddComponent(Entity entity, const CameraComponent &c) {
+    if (entity < 0 || entity >= MAX_ENTITIES) return;
+    cameras[entity] = c;
+    entityMasks[entity].set(COMP_CAMERA);
+  }
+
   bool HasComponent(Entity entity, ComponentType type) {
+    if (entity < 0 || entity >= MAX_ENTITIES) return false;
     return entityMasks[entity].test(type);
   }
 
   bool HasComponents(Entity e, const std::bitset<COMP_COUNT> &mask) {
+    if (e < 0 || e >= MAX_ENTITIES) return false;
     return (entityMasks[e] & mask) == mask;
   }
 
@@ -144,6 +179,9 @@ public:
   std::vector<RigidPhysicsComponent> rigidPhysicsComponents;
   std::vector<CircleColliderComponent> circleColliders;
   std::vector<BoxColliderComponent> boxColliders;
+  std::vector<MaterialComponent> materials;
+  std::vector<LightComponent> lights;
+  std::vector<CameraComponent> cameras;
   std::vector<std::bitset<COMP_COUNT>> entityMasks;
 
 private:
