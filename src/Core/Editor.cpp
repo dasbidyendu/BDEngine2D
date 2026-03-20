@@ -924,12 +924,26 @@ void DrawInspector(Entity e, Registry &reg, int screenWidth, int screenHeight,
     auto &n = reg.names[e];
     char nameBuf[128];
     strcpy(nameBuf, n.name.c_str());
-    ImGui::SetNextItemWidth(-1);
+    ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - 100);
     if (ImGui::InputText("##EntityName", nameBuf, 128)) {
       n.name = nameBuf;
     }
+    ImGui::SameLine();
+    if (ImGui::Button("Delete", ImVec2(100, 0))) {
+        reg.DestroyEntity(e);
+        engine->selectedEntity = -1;
+        ImGui::PopID();
+        return;
+    }
   } else {
     ImGui::TextDisabled("ENTITY %i", e);
+    ImGui::SameLine(ImGui::GetContentRegionAvail().x - 100);
+    if (ImGui::Button("Delete", ImVec2(100, 0))) {
+        reg.DestroyEntity(e);
+        engine->selectedEntity = -1;
+        ImGui::PopID();
+        return;
+    }
   }
   ImGui::Separator();
 
@@ -1288,24 +1302,88 @@ void DrawInspector(Entity e, Registry &reg, int screenWidth, int screenHeight,
 
     // ANIMATION
     if (reg.HasComponent(e, COMP_SPRITE_ANIMATION)) {
-      if (ImGui::CollapsingHeader("Animation",
-                                  ImGuiTreeNodeFlags_DefaultOpen)) {
+      if (ImGui::CollapsingHeader("Animation", ImGuiTreeNodeFlags_DefaultOpen)) {
         auto &sa = reg.spriteAnimations[e];
         if (BeginPropertyGrid("anim_grid")) {
-          PropertyLabel("Frames");
-          ImGui::DragInt("##Frames", &sa.frameCount, 1, 1, 128);
+          PropertyLabel("Columns");
+          ImGui::DragInt("##Cols", &sa.columns, 1, 1, 128);
           PropertyLabel("Rows");
-          ImGui::DragInt("##Rows", &sa.rowCount, 1, 1, 16);
-
-          PropertyLabel("FPS");
-          float fps = (sa.frameDuration > 0) ? (1.0f / sa.frameDuration) : 0;
-          if (ImGui::DragFloat("##FPS", &fps, 1.0f, 1.0f, 120.0f)) {
-            sa.frameDuration = 1.0f / fps;
-          }
-
-          PropertyLabel("Loop");
-          ImGui::Checkbox("##Loop", &sa.loop);
+          ImGui::DragInt("##Rows", &sa.rows, 1, 1, 16);
           EndPropertyGrid();
+        }
+
+        ImGui::Spacing();
+        ImGui::Text("Animation States");
+        ImGui::Separator();
+
+        std::string stateToRemove = "";
+        for (auto& pair : sa.states) {
+            std::string name = pair.first;
+            auto& state = pair.second;
+            ImGui::PushID(name.c_str());
+            bool isOpen = ImGui::TreeNodeEx(name.c_str(), ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_Framed);
+            
+            ImGui::SameLine(ImGui::GetContentRegionAvail().x - 20);
+            if (ImGui::Button("X")) {
+                stateToRemove = name;
+            }
+
+            if (isOpen) {
+                if (BeginPropertyGrid((name + "_grid").c_str())) {
+                    PropertyLabel("Start Frame");
+                    ImGui::DragInt("##SF", &state.startFrame, 1, 0, sa.columns - 1);
+                    PropertyLabel("Start Row");
+                    ImGui::DragInt("##SR", &state.startRow, 1, 0, sa.rows - 1);
+                    PropertyLabel("End Frame");
+                    ImGui::DragInt("##EF", &state.endFrame, 1, 0, sa.columns - 1);
+                    PropertyLabel("End Row");
+                    ImGui::DragInt("##ER", &state.endRow, 1, 0, sa.rows - 1);
+
+                    PropertyLabel("FPS");
+                    float fps = (state.frameDuration > 0) ? (1.0f / state.frameDuration) : 0;
+                    if (ImGui::DragFloat("##FPS", &fps, 1.0f, 1.0f, 120.0f)) {
+                      state.frameDuration = 1.0f / fps;
+                    }
+
+                    PropertyLabel("Loop");
+                    ImGui::Checkbox("##Loop", &state.loop);
+                    EndPropertyGrid();
+                }
+                
+                if (sa.currentState == name && sa.isPlaying) {
+                    ImGui::TextColored(ImVec4(0, 1, 0, 1), "Playing...");
+                } else {
+                    if (ImGui::Button("Play Preview")) {
+                        sa.currentState = name;
+                        sa.currentFrame = state.startFrame;
+                        sa.currentRow = state.startRow;
+                        sa.elapsedTime = 0.0f;
+                        sa.isPlaying = true;
+                    }
+                }
+                ImGui::TreePop();
+            }
+            ImGui::PopID();
+        }
+        
+        if (!stateToRemove.empty()) {
+            sa.states.erase(stateToRemove);
+            if (sa.currentState == stateToRemove) sa.currentState = "";
+        }
+        
+        ImGui::Spacing();
+        static char newStateName[64] = "";
+        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - 50);
+        ImGui::InputText("##NewStateName", newStateName, 64);
+        ImGui::SameLine();
+        if (ImGui::Button("Add")) {
+            if (strlen(newStateName) > 0 && sa.states.find(newStateName) == sa.states.end()) {
+                AnimationState st;
+                st.name = newStateName;
+                st.endFrame = sa.columns - 1; // default to last column 
+                sa.states[newStateName] = st;
+                newStateName[0] = '\0';
+            }
         }
       }
     }
@@ -1385,14 +1463,19 @@ void DrawInspector(Entity e, Registry &reg, int screenWidth, int screenHeight,
       if (!reg.HasComponent(e, COMP_SPRITE_ANIMATION) &&
           ImGui::MenuItem("Animation")) {
         SpriteAnimationComponent sa;
-        sa.frameCount = 8;
-        sa.rowCount = 1;
+        sa.columns = 8;
+        sa.rows = 1;
         sa.currentFrame = 0;
         sa.currentRow = 0;
-        sa.frameDuration = 0.1f;
         sa.elapsedTime = 0.0f;
         sa.isPlaying = true;
-        sa.loop = true;
+        
+        AnimationState idle;
+        idle.name = "Idle";
+        idle.endFrame = 7;
+        sa.states["Idle"] = idle;
+        sa.currentState = "Idle";
+
         reg.AddComponent(e, sa);
       }
 

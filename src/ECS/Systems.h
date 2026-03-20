@@ -24,13 +24,37 @@ namespace AnimationSystem {
         for (Entity i :reg.activeEntities){
             if (reg.HasComponent(i, COMP_SPRITE_ANIMATION) && reg.HasComponent(i, COMP_SPRITE)) {
                 auto& anim = reg.spriteAnimations[i];
-                if (!anim.isPlaying) continue;
+                if (!anim.isPlaying || anim.currentState.empty()) continue;
+                
+                auto it = anim.states.find(anim.currentState);
+                if (it == anim.states.end()) continue;
+                
+                const auto& state = it->second;
+
                 anim.elapsedTime += dt;
-                if (anim.elapsedTime >= anim.frameDuration) {
-                    anim.elapsedTime -= anim.frameDuration;
-                    anim.currentFrame = (anim.currentFrame + 1) % anim.frameCount;
-                    if (anim.currentFrame == 0) {
-						anim.currentRow = (anim.currentRow + 1) % anim.rowCount;
+                if (anim.elapsedTime >= state.frameDuration) {
+                    anim.elapsedTime -= state.frameDuration;
+
+                    anim.currentFrame++;
+                    if (anim.currentFrame >= anim.columns) {
+                        anim.currentFrame = 0;
+                        anim.currentRow++;
+                    }
+
+                    bool finished = false;
+                    if (anim.currentRow > state.endRow || (anim.currentRow == state.endRow && anim.currentFrame > state.endFrame)) {
+                        finished = true;
+                    }
+
+                    if (finished) {
+                        if (state.loop) {
+                            anim.currentFrame = state.startFrame;
+                            anim.currentRow = state.startRow;
+                        } else {
+                            anim.currentFrame = state.endFrame;
+                            anim.currentRow = state.endRow;
+                            anim.isPlaying = false;
+                        }
                     }
                 }
             }
@@ -108,9 +132,9 @@ namespace RenderSystem {
 
                 if (reg.HasComponent(i, COMP_SPRITE_ANIMATION)) {
                     auto& anim = reg.spriteAnimations[i];
-                    if (anim.frameCount > 0) {
-                        frameWidth = (float)s.texture.width / anim.frameCount;
-						frameHeight = (float)s.texture.height / anim.rowCount;
+                    if (anim.columns > 0 && anim.rows > 0) {
+                        frameWidth = (float)s.texture.width / anim.columns;
+						frameHeight = (float)s.texture.height / anim.rows;
                         frameX = anim.currentFrame * frameWidth;
 						frameY = anim.currentRow * frameHeight;
                     }

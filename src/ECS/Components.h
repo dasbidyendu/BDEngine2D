@@ -4,6 +4,7 @@
 #include <functional>
 #include <string>
 #include <vector>
+#include <unordered_map>
 
 struct NameComponent {
   std::string name = "Entity";
@@ -111,15 +112,27 @@ struct UIComponent {
   std::function<void()> onClick;
 };
 
+struct AnimationState {
+  std::string name;
+  int startFrame = 0;
+  int startRow = 0;
+  int endFrame = 0;
+  int endRow = 0;
+  float frameDuration = 0.1f;
+  bool loop = true;
+};
+
 struct SpriteAnimationComponent {
-  int frameCount = 1;
-  int rowCount = 1;
+  int columns = 1;
+  int rows = 1;
+  
+  std::unordered_map<std::string, AnimationState> states;
+  std::string currentState = "";
+
   int currentFrame = 0;
   int currentRow = 0;
-  float frameDuration = 0.1f;
   float elapsedTime = 0.0f;
   bool isPlaying = true;
-  bool loop = true;
 };
 
 struct alignas(16) RigidPhysicsComponent {

@@ -180,6 +180,52 @@ public:
       reg.AddComponent(e, tr);
     };
 
+    lua["AddAnimationState"] = [&reg](Entity e, std::string name, int startFrame, int startRow, int endFrame, int endRow, float duration, bool loop) {
+        if (e >= 0 && e < MAX_ENTITIES && reg.HasComponent(e, COMP_SPRITE_ANIMATION)) {
+            AnimationState state;
+            state.name = name;
+            state.startFrame = startFrame;
+            state.startRow = startRow;
+            state.endFrame = endFrame;
+            state.endRow = endRow;
+            state.frameDuration = duration;
+            state.loop = loop;
+            reg.spriteAnimations[e].states[name] = state;
+            if (reg.spriteAnimations[e].currentState.empty()) {
+                reg.spriteAnimations[e].currentState = name;
+                reg.spriteAnimations[e].currentFrame = startFrame;
+                reg.spriteAnimations[e].currentRow = startRow;
+            }
+        }
+    };
+
+    lua["PlayAnimation"] = [&reg](Entity e, std::string name) {
+        if (e >= 0 && e < MAX_ENTITIES && reg.HasComponent(e, COMP_SPRITE_ANIMATION)) {
+            auto& anim = reg.spriteAnimations[e];
+            auto it = anim.states.find(name);
+            if (it != anim.states.end() && anim.currentState != name) {
+                anim.currentState = name;
+                anim.currentFrame = it->second.startFrame;
+                anim.currentRow = it->second.startRow;
+                anim.elapsedTime = 0.0f;
+                anim.isPlaying = true;
+            }
+        }
+    };
+
+    lua["StopAnimation"] = [&reg](Entity e) {
+        if (e >= 0 && e < MAX_ENTITIES && reg.HasComponent(e, COMP_SPRITE_ANIMATION)) {
+            reg.spriteAnimations[e].isPlaying = false;
+        }
+    };
+
+    lua["SetSpriteSheetLayout"] = [&reg](Entity e, int columns, int rows) {
+        if (e >= 0 && e < MAX_ENTITIES && reg.HasComponent(e, COMP_SPRITE_ANIMATION)) {
+            reg.spriteAnimations[e].columns = columns;
+            reg.spriteAnimations[e].rows = rows;
+        }
+    };
+
     lua["SetEntitySize"] = [&reg](Entity e, float targetWidth,
                                   float targetHeight) {
       if (e < 0 || e >= MAX_ENTITIES || !reg.HasComponent(e, COMP_SPRITE) ||
