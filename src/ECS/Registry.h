@@ -1,141 +1,197 @@
 #pragma once
-#include <vector>
-#include <bitset>
 #include "Components.h"
-#include "Entity.h" 
+#include "Entity.h"
+
+#include <bitset>
+#include <vector>
 
 class Registry {
 public:
-    Registry() {
-        transforms.resize(MAX_ENTITIES);
-        sprites.resize(MAX_ENTITIES);
-        velocities.resize(MAX_ENTITIES);
-        inputComponents.resize(MAX_ENTITIES);
-        uiComponents.resize(MAX_ENTITIES);
-		uiCanvases.resize(MAX_ENTITIES);
-        scripts.resize(MAX_ENTITIES);
-        entityMasks.resize(MAX_ENTITIES);
-		spriteAnimations.resize(MAX_ENTITIES);
-		rigidPhysicsComponents.resize(MAX_ENTITIES);
-		circleColliders.resize(MAX_ENTITIES);
-		boxColliders.resize(MAX_ENTITIES);
+  Registry() {
+    names.resize(MAX_ENTITIES);
+    transforms.resize(MAX_ENTITIES);
+    sprites.resize(MAX_ENTITIES);
+    velocities.resize(MAX_ENTITIES);
+    inputComponents.resize(MAX_ENTITIES);
+    uiComponents.resize(MAX_ENTITIES);
+    uiCanvases.resize(MAX_ENTITIES);
+    scripts.resize(MAX_ENTITIES);
+    entityMasks.resize(MAX_ENTITIES);
+    spriteAnimations.resize(MAX_ENTITIES);
+    rigidPhysicsComponents.resize(MAX_ENTITIES);
+    circleColliders.resize(MAX_ENTITIES);
+    boxColliders.resize(MAX_ENTITIES);
+    materials.resize(MAX_ENTITIES);
+    lights.resize(MAX_ENTITIES);
+    cameras.resize(MAX_ENTITIES);
+    tilemaps.resize(MAX_ENTITIES);
+  }
+
+  Entity CreateEntity() {
+    if (nextEntity >= MAX_ENTITIES) {
+      return -1;
     }
+    Entity e = nextEntity++;
+    activeEntities.push_back(e);
 
-    Entity CreateEntity() {
-        if (nextEntity >= MAX_ENTITIES) {
-            return -1;
-        }
-        Entity e = nextEntity++;
-        activeEntities.push_back(e);
-        return e;
+    NameComponent defaultName;
+    defaultName.name = "Entity " + std::to_string(e);
+    AddComponent(e, defaultName);
+
+    return e;
+  }
+
+  void DestroyEntity(Entity entity) {
+    if (entity < 0 || entity >= MAX_ENTITIES)
+      return;
+
+    entityMasks[entity].reset();
+
+    auto it = std::find(activeEntities.begin(), activeEntities.end(), entity);
+
+    if (it != activeEntities.end()) {
+      *it = activeEntities.back();
+      activeEntities.pop_back();
     }
+  }
 
-    void Registry::DestroyEntity(Entity entity) {
-        if (entity < 0 || entity >= MAX_ENTITIES) return;
+  void AddComponent(Entity entity, const NameComponent &c) {
+    if (entity < 0 || entity >= MAX_ENTITIES) return;
+    names[entity] = c;
+    entityMasks[entity].set(COMP_NAME);
+  }
 
-        entityMasks[entity].reset();
+  void AddComponent(Entity entity, const TransformComponent &c) {
+    if (entity < 0 || entity >= MAX_ENTITIES) return;
+    transforms[entity] = c;
+    entityMasks[entity].set(COMP_TRANSFORM);
+  }
 
-        auto it = std::find(activeEntities.begin(), activeEntities.end(), entity);
+  void AddComponent(Entity entity, const SpriteComponent &c) {
+    if (entity < 0 || entity >= MAX_ENTITIES) return;
+    sprites[entity] = c;
+    entityMasks[entity].set(COMP_SPRITE);
+  }
 
-        if (it != activeEntities.end()) {
-            *it = activeEntities.back();
-            activeEntities.pop_back();
-        }
+  void AddComponent(Entity entity, const VelocityComponent &c) {
+    if (entity < 0 || entity >= MAX_ENTITIES) return;
+    velocities[entity] = c;
+    entityMasks[entity].set(COMP_VELOCITY);
+  }
+
+  void AddComponent(Entity entity, const InputComponent &c) {
+    if (entity < 0 || entity >= MAX_ENTITIES) return;
+    inputComponents[entity] = c;
+    entityMasks[entity].set(COMP_INPUT);
+  }
+
+  void AddComponent(Entity entity, const UIComponent &c) {
+    if (entity < 0 || entity >= MAX_ENTITIES) return;
+    uiComponents[entity] = c;
+    entityMasks[entity].set(COMP_UI);
+  }
+
+  void AddComponent(Entity entity, const ScriptComponent &c) {
+    if (entity < 0 || entity >= MAX_ENTITIES) return;
+    scripts[entity] = c;
+    entityMasks[entity].set(COMP_SCRIPT);
+  }
+
+  void AddComponent(Entity entity, const UICanvasComponent &c) {
+    if (entity < 0 || entity >= MAX_ENTITIES) return;
+    uiCanvases[entity] = c;
+    entityMasks[entity].set(COMP_UICANVAS);
+  }
+
+  void AddComponent(Entity entity, const SpriteAnimationComponent &c) {
+    if (entity < 0 || entity >= MAX_ENTITIES) return;
+    spriteAnimations[entity] = c;
+    entityMasks[entity].set(COMP_SPRITE_ANIMATION);
+  }
+
+  void AddComponent(Entity entity, const RigidPhysicsComponent &c) {
+    if (entity < 0 || entity >= MAX_ENTITIES) return;
+    rigidPhysicsComponents[entity] = c;
+    entityMasks[entity].set(COMP_RIGIDPHYSICS);
+  }
+
+  void AddComponent(Entity entity, const CircleColliderComponent &c) {
+    if (entity < 0 || entity >= MAX_ENTITIES) return;
+    circleColliders[entity] = c;
+    entityMasks[entity].set(COMP_CIRCLECOLLIDER);
+  }
+
+  void AddComponent(Entity entity, const BoxColliderComponent &c) {
+    if (entity < 0 || entity >= MAX_ENTITIES) return;
+    boxColliders[entity] = c;
+    entityMasks[entity].set(COMP_BOXCOLLIDER);
+  }
+
+  void AddComponent(Entity entity, const MaterialComponent &c) {
+    if (entity < 0 || entity >= MAX_ENTITIES) return;
+    materials[entity] = c;
+    entityMasks[entity].set(COMP_MATERIAL);
+  }
+
+  void AddComponent(Entity entity, const LightComponent &c) {
+    if (entity < 0 || entity >= MAX_ENTITIES) return;
+    lights[entity] = c;
+    entityMasks[entity].set(COMP_LIGHT);
+  }
+
+  void AddComponent(Entity entity, const CameraComponent &c) {
+    if (entity < 0 || entity >= MAX_ENTITIES) return;
+    cameras[entity] = c;
+    entityMasks[entity].set(COMP_CAMERA);
+  }
+
+  void AddComponent(Entity entity, const TilemapComponent &c) {
+    if (entity < 0 || entity >= MAX_ENTITIES) return;
+    tilemaps[entity] = c;
+    entityMasks[entity].set(COMP_TILEMAP);
+  }
+
+  bool HasComponent(Entity entity, ComponentType type) {
+    if (entity < 0 || entity >= MAX_ENTITIES) return false;
+    return entityMasks[entity].test(type);
+  }
+
+  bool HasComponents(Entity e, const std::bitset<COMP_COUNT> &mask) {
+    if (e < 0 || e >= MAX_ENTITIES) return false;
+    return (entityMasks[e] & mask) == mask;
+  }
+
+  int GetAliveEntityCount() const { return (int)nextEntity; }
+
+  void Clear() {
+    for (int i = 0; i < MAX_ENTITIES; i++) {
+      entityMasks[i].reset();
     }
+    activeEntities.clear();
+    nextEntity = 0;
+  }
 
-    void AddComponent(Entity entity, TransformComponent c) {
-        transforms[entity] = c;
-        entityMasks[entity].set(COMP_TRANSFORM);
-    }
+  void SetNextEntity(Entity val) { nextEntity = val; }
 
-    void AddComponent(Entity entity, SpriteComponent c) {
-        sprites[entity] = c;
-        entityMasks[entity].set(COMP_SPRITE);
-    }
-
-    void AddComponent(Entity entity, VelocityComponent c) {
-        velocities[entity] = c;
-        entityMasks[entity].set(COMP_VELOCITY);
-    }
-
-    void AddComponent(Entity entity, InputComponent c) {
-        inputComponents[entity] = c;
-        entityMasks[entity].set(COMP_INPUT);
-    }
-
-    void AddComponent(Entity entity, UIComponent c) {
-        uiComponents[entity] = c;
-        entityMasks[entity].set(COMP_UI);
-    }
-
-    void AddComponent(Entity entity, ScriptComponent c) {
-        scripts[entity] = c;
-        entityMasks[entity].set(COMP_SCRIPT);
-    }
-
-    void AddComponent(Entity entity, UICanvasComponent c) {
-        uiCanvases[entity] = c;
-        entityMasks[entity].set(COMP_UICANVAS);
-	}
-    
-    void AddComponent(Entity entity, SpriteAnimationComponent c) {
-        spriteAnimations[entity] = c;
-        entityMasks[entity].set(COMP_SPRITE_ANIMATION);
-	}
-
-    void AddComponent(Entity entity, RigidPhysicsComponent c) {
-        rigidPhysicsComponents[entity] = c;
-        entityMasks[entity].set(COMP_RIGIDPHYSICS);
-	}
-
-    void AddComponent(Entity entity, CircleColliderComponent c) {
-        circleColliders[entity] = c;
-        entityMasks[entity].set(COMP_CIRCLECOLLIDER);
-    }
-
-    void AddComponent(Entity entity, BoxColliderComponent c) {
-        boxColliders[entity] = c;
-        entityMasks[entity].set(COMP_BOXCOLLIDER);
-	}
-
-    bool HasComponent(Entity entity, ComponentType type) {
-        return entityMasks[entity].test(type);
-    }
-
-    bool HasComponents(Entity e,const std::bitset<COMP_COUNT>& mask) {
-        return (entityMasks[e] & mask) == mask;
-    }
-
-    int GetAliveEntityCount() const {
-        return (int)nextEntity;
-    }
-    
-    void Clear() {
-        for (int i = 0; i < MAX_ENTITIES; i++) {
-            entityMasks[i].reset();
-        }
-		activeEntities.clear();
-        nextEntity = 0;
-    }
-
-    void SetNextEntity(Entity val) {
-        nextEntity = val;
-    }
-
-    std::vector<Entity> activeEntities;
-    std::vector<TransformComponent> transforms;
-    std::vector<SpriteComponent> sprites;
-    std::vector<VelocityComponent> velocities;
-    std::vector<InputComponent> inputComponents;
-	std::vector<UICanvasComponent> uiCanvases;
-    std::vector<UIComponent> uiComponents;
-	std::vector<ScriptComponent> scripts;
-	std::vector<SpriteAnimationComponent> spriteAnimations;
-	std::vector<RigidPhysicsComponent> rigidPhysicsComponents;
-	std::vector<CircleColliderComponent> circleColliders;
-	std::vector<BoxColliderComponent> boxColliders;
-    std::vector<std::bitset<COMP_COUNT>> entityMasks;
+  std::vector<Entity> activeEntities;
+  std::vector<NameComponent> names;
+  std::vector<TransformComponent> transforms;
+  std::vector<SpriteComponent> sprites;
+  std::vector<VelocityComponent> velocities;
+  std::vector<InputComponent> inputComponents;
+  std::vector<UICanvasComponent> uiCanvases;
+  std::vector<UIComponent> uiComponents;
+  std::vector<ScriptComponent> scripts;
+  std::vector<SpriteAnimationComponent> spriteAnimations;
+  std::vector<RigidPhysicsComponent> rigidPhysicsComponents;
+  std::vector<CircleColliderComponent> circleColliders;
+  std::vector<BoxColliderComponent> boxColliders;
+  std::vector<MaterialComponent> materials;
+  std::vector<LightComponent> lights;
+  std::vector<CameraComponent> cameras;
+  std::vector<TilemapComponent> tilemaps;
+  std::vector<std::bitset<COMP_COUNT>> entityMasks;
 
 private:
-    Entity nextEntity = 0;
+  Entity nextEntity = 0;
 };

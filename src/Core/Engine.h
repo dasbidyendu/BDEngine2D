@@ -1,11 +1,4 @@
 #pragma once
-#include "Core/Physics.h"
-#include "ECS/Systems.h"
-#include "ECS/UISystem.h"
-#include "Managers/ResourceManager.h"
-#include "Managers/ScriptSystem.h"
-#include "Profiler.h"
-#include "Utils/AssetEntry.h"
 #include "imgui.h"
 #include "raylib.h"
 #include "raymath.h"
@@ -13,6 +6,17 @@
 #include <memory>
 #include <string>
 #include <vector>
+
+#include "ECS/Systems.h"
+#include "ECS/UISystem.h"
+#include "Managers/ProjectManager.h"
+#include "Managers/ResourceManager.h"
+#include "Managers/ScriptSystem.h"
+#include "Graphics/RenderPipeline.h"
+#include "Physics.h"
+#include "Profiler.h"
+#include "Utils/AssetEntry.h"
+#include "Utils/SetupHelper.h"
 
 class Editor;
 
@@ -25,6 +29,8 @@ public:
   void Run();
   void InitScripting();
   void Exit();
+
+  std::string engineRootPath;
 
   void ApplyTheme(const std::string &themeName);
   void SaveConfig();
@@ -59,10 +65,13 @@ public:
   std::string lastFontPath = "assets/fonts/Mecha.ttf";
 
   std::unique_ptr<ScriptEngine> scriptEngine;
+  ProjectManager projectManager;
+  std::vector<std::string> recentProjects;
+
   DebugStats stats;
 
   RenderTexture2D viewportTarget;
-  RenderTexture2D gameTarget;
+  std::unique_ptr<RenderPipeline> renderPipeline;
 
 private:
   void Update();
@@ -94,7 +103,7 @@ private:
   std::string lastThemePath = "assets/themes/dark-gold.txt";
   void ScanThemes();
 
-  Font engineFont;
+  Font engineFont = {0};
   void ScanFonts();
 
   PhysicsSystem physicsSystem;

@@ -54,3 +54,15 @@
 /External/rlimgui
 imgui.ini
 *.bds
+
+# Blog drafts - local only
+/MediumBlogUpdates
+/out/build
+/Build
+session_log.txt
+CppProperties.json
+/Build/Lua
+/Int
+/Build
+EditorConfig.ini
+EditorConfig.ini
