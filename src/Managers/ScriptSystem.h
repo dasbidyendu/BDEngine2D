@@ -12,11 +12,80 @@
 #include <unordered_map>
 #include "Graphics/ShaderBuilder.h"
 #include "Managers/ResourceManager.h"
+#include "json.hpp"
 
 struct ScriptInstance {
   sol::environment env;
   sol::protected_function startFunc;
   sol::protected_function updateFunc;
+};
+
+class JsonBridge {
+public:
+    static sol::object JsonToLua(sol::state_view lua, const nlohmann::json& j) {
+        if (j.is_number_integer()) return sol::make_object(lua, j.get<int>());
+        if (j.is_number_float())   return sol::make_object(lua, j.get<float>());
+        if (j.is_string())         return sol::make_object(lua, j.get<std::string>());
+        if (j.is_boolean())        return sol::make_object(lua, j.get<bool>());
+
+        if (j.is_array()) {
+            sol::table t = lua.create_table();
+            for (size_t i = 0; i < j.size(); ++i) {
+                t[i + 1] = JsonToLua(lua, j[i]); // Lua is 1-indexed
+            }
+            return t;
+        }
+
+        if (j.is_object()) {
+            sol::table t = lua.create_table();
+            for (auto it = j.begin(); it != j.end(); ++it) {
+                t[it.key()] = JsonToLua(lua, it.value());
+            }
+            return t;
+        }
+
+        return sol::nil;
+    }
+
+    static sol::object Decode(sol::state_view lua, std::string jsonStr) {
+        auto j = nlohmann::json::parse(jsonStr);
+        return JsonToLua(lua, j);
+    }
+    static nlohmann::json TableToJson(sol::table table) {
+        nlohmann::json j;
+
+        for (auto const& [key, value] : table) {
+            // Handle Key
+            std::string k = (key.get_type() == sol::type::string)
+                ? key.as<std::string>()
+                : std::to_string(key.as<int>());
+
+            // Handle Value
+            switch (value.get_type()) {
+            case sol::type::table:
+                j[k] = TableToJson(value.as<sol::table>());
+                break;
+            case sol::type::string:
+                j[k] = value.as<std::string>();
+                break;
+            case sol::type::number:
+                j[k] = value.as<double>();
+                break;
+            case sol::type::boolean:
+                j[k] = value.as<bool>();
+                break;
+            default:
+                j[k] = nullptr;
+                break;
+            }
+        }
+        return j;
+    }
+
+    static std::string Encode(sol::table table) {
+        nlohmann::json j = TableToJson(table);
+        return j.dump(4);
+    }
 };
 
 class ScriptEngine {
@@ -485,6 +554,12 @@ public:
     };
     lua["GetMousePos"] = []() { return GetMousePosition(); };
     lua["MOUSE_LEFT"] = 0;
+
+    // NEW BINDINGS FOR JSON API
+    lua.new_usertype<JsonBridge>("json",
+        "decode", &JsonBridge::Decode,
+        "encode", &JsonBridge::Encode
+    );
   }
 
   void LoadScript(Entity e, ScriptInstanceData& instInfo) {
@@ -594,4 +669,4 @@ public:
     currentEntity = -1;
     currentPath = "";
   }
-};
+};
