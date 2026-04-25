@@ -2,6 +2,7 @@
 #include "ECS/Registry.h"
 #include "ECS/UISystem.h"
 #include "Engine.h"
+#include "Managers/HotkeyManager.h"
 #include "Managers/ProjectManager.h"
 #include "Managers/ResourceManager.h"
 #include "Managers/SceneManager.h"
@@ -15,6 +16,7 @@
 #include <filesystem>
 #include <fstream>
 #include <sstream>
+
 
 namespace fs = std::filesystem;
 
@@ -47,20 +49,24 @@ void Editor::Update() {
     lastPath = currentBrowserPath;
   }
 
-  if (ImGui::GetIO().WantCaptureMouse)
-    return;
+  //if (ImGui::GetIO().WantCaptureMouse)
+  //  return;
 
   ImVec2 viewportPos = ImGui::GetMainViewport()->Pos;
 
   Vector2 mousePos = GetMousePosition();
   Vector2 relativeMousePos = {mousePos.x - viewportPos.x,
                               mousePos.y - viewportPos.y};
+  Camera2D sceneCam = owner->GetCamera();
+  if (owner->viewportTarget.texture.id != 0) {
+      sceneCam.offset = { (float)owner->viewportTarget.texture.width / 2.0f, (float)owner->viewportTarget.texture.height / 2.0f };
+  }
   Vector2 worldMousePos =
-      GetScreenToWorld2D(relativeMousePos, owner->GetCamera());
+      GetScreenToWorld2D(relativeMousePos, sceneCam);
 
   ImGuiIO &io = ImGui::GetIO();
-  if (io.WantCaptureMouse)
-    return;
+  //if (io.WantCaptureMouse)
+  //  return;
 
   static bool isDraggingUI = false;
 
@@ -105,87 +111,169 @@ void Editor::Update() {
       draggedAssetIndex = -1;
     }
   } else {
-    if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON) && draggedAssetIndex != -1) {
-      if (draggedAssetIndex < (int)owner->editorAssets.size()) {
-        auto &asset = owner->editorAssets[draggedAssetIndex];
-        if (asset.isTexture) {
-          owner->assets.LoadTextureAsset(asset.path, asset.path);
+    Vector2 mouseAbs = GetMousePosition();
+    bool inSceneView = (mouseAbs.x >= sceneViewPos.x &&
+                        mouseAbs.x <= sceneViewPos.x + sceneViewSize.x &&
+                        mouseAbs.y >= sceneViewPos.y &&
+                        mouseAbs.y <= sceneViewPos.y + sceneViewSize.y);
 
-          Texture2D tex = owner->assets.GetTexture(asset.path);
+    Vector2 relativeMouse = {mouseAbs.x - sceneViewPos.x, mouseAbs.y - sceneViewPos.y};
+    Camera2D sceneCam = owner->GetCamera();
+    if (owner->viewportTarget.texture.id != 0) {
+        sceneCam.offset = { (float)owner->viewportTarget.texture.width / 2.0f, (float)owner->viewportTarget.texture.height / 2.0f };
+    }
+    Vector2 worldMouse = GetScreenToWorld2D(relativeMouse, sceneCam);
 
-          Vector2 worldMouse = GetScreenToWorld2D(mousePos, owner->GetCamera());
-          Vector2 snappedPos = {floor(worldMouse.x / 32) * 32,
-                                floor(worldMouse.y / 32) * 32};
-
-          Entity newEntity = owner->registry->CreateEntity();
-          TransformComponent t;
-          t.position = snappedPos;
-          t.scale = {1.0f, 1.0f};
-          t.rotation = 0.0f;
-          t.padding = 0.0f;
-          owner->registry->AddComponent(newEntity, t);
-
-          SpriteComponent sprite;
-          sprite.texturePath = asset.path;
-          sprite.texture = tex;
-          sprite.tint = WHITE;
-          sprite.anchor = {0.5f, 0.5f};
-          sprite.flipX = false;
-          owner->registry->AddComponent(newEntity, sprite);
-        }
-        draggedAssetIndex = -1;
-        // Legacy sidebar check removed
-      }
-
-      if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && draggedAssetIndex == -1) {
-        Vector2 mouseAbs = GetMousePosition();
-
-        // Check if mouse is within Scene View
-        if (mouseAbs.x >= sceneViewPos.x &&
-            mouseAbs.x <= sceneViewPos.x + sceneViewSize.x &&
-            mouseAbs.y >= sceneViewPos.y &&
-            mouseAbs.y <= sceneViewPos.y + sceneViewSize.y) {
-
-          Vector2 relativeMouse = {mouseAbs.x - sceneViewPos.x,
-                                   mouseAbs.y - sceneViewPos.y};
-          Vector2 worldMouse =
-              GetScreenToWorld2D(relativeMouse, owner->GetCamera());
-
-          owner->selectedEntity = -1;
-
-          for (Entity i : owner->registry->activeEntities) {
-            if (owner->registry->HasComponent(i, COMP_TRANSFORM) &&
-                owner->registry->HasComponent(i, COMP_SPRITE)) {
-              auto &t = owner->registry->transforms[i];
-              auto &s = owner->registry->sprites[i];
-              Rectangle bounds = {
-                  t.position.x - (s.texture.width * t.scale.x * s.anchor.x),
-                  t.position.y - (s.texture.height * t.scale.y * s.anchor.y),
-                  (float)s.texture.width * t.scale.x,
-                  (float)s.texture.height * t.scale.y};
-
-              if (CheckCollisionPointRec(worldMouse, bounds)) {
-                owner->selectedEntity = i;
-                break;
-              }
+    if (inSceneView) {
+        // --- 1. DRAG & DROP SPRITES ---
+        if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON) && draggedAssetIndex != -1) {
+            if (draggedAssetIndex < (int)owner->editorAssets.size()) {
+                auto &asset = owner->editorAssets[draggedAssetIndex];
+                if (asset.isTexture) {
+                    owner->assets.LoadTextureAsset(asset.path, asset.path);
+                    Texture2D tex = owner->assets.GetTexture(asset.path);
+                    Vector2 snappedPos = {floor(worldMouse.x / 32) * 32, floor(worldMouse.y / 32) * 32};
+                    Entity newEntity = owner->registry->CreateEntity();
+                    TransformComponent t;
+                    t.position = snappedPos; t.scale = {1.0f, 1.0f}; t.rotation = 0.0f; t.padding = 0.0f;
+                    owner->registry->AddComponent(newEntity, t);
+                    SpriteComponent sprite;
+                    sprite.texturePath = asset.path; sprite.texture = tex; sprite.tint = WHITE; sprite.anchor = {0.5f, 0.5f}; sprite.flipX = false;
+                    owner->registry->AddComponent(newEntity, sprite);
+                }
+                draggedAssetIndex = -1;
             }
-          }
         }
-      }
 
-      if (owner->selectedEntity != -1 && IsKeyPressed(KEY_DELETE)) {
-        owner->registry->DestroyEntity(owner->selectedEntity);
-        owner->selectedEntity = -1;
-      }
+        // --- 2. GIZMO HOVER ---
+        hoveredGizmoAxis = AXIS_NONE;
+        if (owner->selectedEntity != -1 && owner->registry->HasComponent(owner->selectedEntity, COMP_TRANSFORM)) {
+            auto &t = owner->registry->transforms[owner->selectedEntity];
+            float gizmoSize = 60.0f / owner->GetCamera().zoom;
+            float hitSize = 25.0f / owner->GetCamera().zoom;
+
+            if (!isDraggingGizmo) {
+                if (currentGizmoMode == GIZMO_TRANSLATE || currentGizmoMode == GIZMO_SCALE) {
+                    if (CheckCollisionPointRec(worldMouse, {t.position.x - hitSize / 2, t.position.y - hitSize / 2, hitSize, hitSize})) hoveredGizmoAxis = AXIS_CENTER;
+                    else if (CheckCollisionPointRec(worldMouse, {t.position.x, t.position.y - hitSize / 2, gizmoSize + hitSize / 2, hitSize})) hoveredGizmoAxis = AXIS_X;
+                    else if (CheckCollisionPointRec(worldMouse, {t.position.x - hitSize / 2, t.position.y - (gizmoSize + hitSize / 2), hitSize, gizmoSize + hitSize / 2})) hoveredGizmoAxis = AXIS_Y;
+                } else if (currentGizmoMode == GIZMO_ROTATE) {
+                    float dist = Vector2Distance(worldMouse, t.position);
+                    if (dist > gizmoSize - hitSize / 2 && dist < gizmoSize + hitSize / 2) hoveredGizmoAxis = AXIS_CENTER;
+                }
+            }
+        }
+
+        bool clickHandled = false;
+
+        // --- 3. GIZMO DRAG START ---
+        if (!isDraggingGizmo && IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && hoveredGizmoAxis != AXIS_NONE) {
+            auto &t = owner->registry->transforms[owner->selectedEntity];
+            activeGizmoAxis = hoveredGizmoAxis;
+            isDraggingGizmo = true;
+            gizmoDragStartPos = worldMouse;
+            gizmoDragStartValue = (currentGizmoMode == GIZMO_SCALE) ? t.scale : t.position;
+            gizmoDragStartRotation = t.rotation;
+            clickHandled = true;
+        }
+
+        // --- 4. TILE PAINTING ---
+        if (!clickHandled && !isDraggingGizmo && activeTilemapEntity != -1 && showTilingManager && (currentTilingMode == TILE_PAINT || currentTilingMode == TILE_ERASE || IsMouseButtonDown(MOUSE_RIGHT_BUTTON))) {
+            if (IsMouseButtonDown(MOUSE_LEFT_BUTTON) || IsMouseButtonDown(MOUSE_RIGHT_BUTTON)) {
+                auto& map = owner->registry->tilemaps[activeTilemapEntity];
+                auto& t = owner->registry->transforms[activeTilemapEntity];
+                Vector2 localMouse = { (worldMouse.x - t.position.x) / t.scale.x, (worldMouse.y - t.position.y) / t.scale.y };
+                int tileX = floor(localMouse.x / map.tileSize);
+                int tileY = floor(localMouse.y / map.tileSize);
+                bool isErase = IsMouseButtonDown(MOUSE_RIGHT_BUTTON) || currentTilingMode == TILE_ERASE;
+
+                for (int dy = 0; dy < brushSize; dy++) {
+                    for (int dx = 0; dx < brushSize; dx++) {
+                        int tx = tileX + dx;
+                        int ty = tileY + dy;
+                        if (tx >= 0 && tx < map.width && ty >= 0 && ty < map.height) {
+                            int idx = ty * map.width + tx;
+                            if (isErase) map.tiles[idx].index = -1;
+                            else map.tiles[idx].index = selectedTileIndex;
+                            if (!map.tileSetPath.empty()) {
+                                TilemapSystem::RefreshRules(map, tx, ty, owner->assets.GetTileSet(map.tileSetPath));
+                            }
+                        }
+                    }
+                }
+                clickHandled = true; 
+            }
+        }
+
+        // --- 5. ENTITY SELECTION ---
+        if (!clickHandled && !isDraggingGizmo && draggedAssetIndex == -1) {
+            if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && (currentTilingMode == TILE_SELECT || !showTilingManager)) {
+                owner->selectedEntity = -1;
+                for (Entity i : owner->registry->activeEntities) {
+                    if (owner->registry->HasComponent(i, COMP_TRANSFORM) && owner->registry->HasComponent(i, COMP_SPRITE)) {
+                        auto &t = owner->registry->transforms[i];
+                        auto &s = owner->registry->sprites[i];
+                        Rectangle bounds = { t.position.x - (s.texture.width * t.scale.x * s.anchor.x), t.position.y - (s.texture.height * t.scale.y * s.anchor.y), (float)s.texture.width * t.scale.x, (float)s.texture.height * t.scale.y };
+                        if (CheckCollisionPointRec(worldMouse, bounds)) {
+                            owner->selectedEntity = i;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // --- 6. GIZMO DRAG UPDATE ---
+    if (isDraggingGizmo && owner->selectedEntity != -1 && owner->registry->HasComponent(owner->selectedEntity, COMP_TRANSFORM)) {
+        if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON)) {
+            isDraggingGizmo = false;
+            activeGizmoAxis = AXIS_NONE;
+        } else {
+            auto &t = owner->registry->transforms[owner->selectedEntity];
+            Vector2 delta = {worldMouse.x - gizmoDragStartPos.x, worldMouse.y - gizmoDragStartPos.y};
+            if (currentGizmoMode == GIZMO_TRANSLATE) {
+                if (activeGizmoAxis == AXIS_X) t.position.x = gizmoDragStartValue.x + delta.x;
+                else if (activeGizmoAxis == AXIS_Y) t.position.y = gizmoDragStartValue.y + delta.y;
+                else if (activeGizmoAxis == AXIS_CENTER) t.position = Vector2Add(gizmoDragStartValue, delta);
+            } else if (currentGizmoMode == GIZMO_SCALE) {
+                if (activeGizmoAxis == AXIS_X) t.scale.x = gizmoDragStartValue.x + delta.x / 50.0f;
+                else if (activeGizmoAxis == AXIS_Y) t.scale.y = gizmoDragStartValue.y - delta.y / 50.0f;
+                else if (activeGizmoAxis == AXIS_CENTER) {
+                    float s = 1.0f + (delta.x - delta.y) / 100.0f;
+                    t.scale = Vector2Scale(gizmoDragStartValue, s);
+                }
+            } else if (currentGizmoMode == GIZMO_ROTATE) {
+                float angleStart = atan2f(gizmoDragStartPos.y - t.position.y, gizmoDragStartPos.x - t.position.x);
+                float angleCurrent = atan2f(worldMouse.y - t.position.y, worldMouse.x - t.position.x);
+                t.rotation = gizmoDragStartRotation + (angleCurrent - angleStart) * RAD2DEG;
+            }
+        }
+    }
+
+    // --- 7. HOTKEYS ---
+    if (owner->IsMouseOverViewport && owner->selectedEntity != -1) {
+        if (HotkeyManager::Get().IsPressed("Focus")) {
+            if (owner->registry->HasComponent(owner->selectedEntity, COMP_TRANSFORM)) {
+                owner->GetCamera().target = owner->registry->transforms[owner->selectedEntity].position;
+            }
+        }
+        if (HotkeyManager::Get().IsPressed("GizmoTranslate")) currentGizmoMode = GIZMO_TRANSLATE;
+        if (HotkeyManager::Get().IsPressed("GizmoRotate")) currentGizmoMode = GIZMO_ROTATE;
+        if (HotkeyManager::Get().IsPressed("GizmoScale")) currentGizmoMode = GIZMO_SCALE;
+    }
+
+    if (owner->selectedEntity != -1 &&
+        HotkeyManager::Get().IsPressed("Delete")) {
+      owner->registry->DestroyEntity(owner->selectedEntity);
+      owner->selectedEntity = -1;
     }
 
     if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON))
       draggedAssetIndex = -1;
-
-    // Rescan logic moved to top of Update() so it runs
-    // even when ImGui has mouse focus (e.g. clicking in browser)
   }
-};
+}
+
 void Editor::OpenScriptEditor(const std::string &path) {
   // If already open, just mark it visible and focus it
   for (auto &tab : openScriptTabs) {
@@ -242,10 +330,12 @@ void Editor::DrawScriptEditors() {
             if (owner->scriptEngine) {
               owner->scriptEngine->compiledScripts.erase(tab.filePath);
               // Clear live instances to force reload
-              auto& live = owner->scriptEngine->liveInstances;
-              for (auto it = live.begin(); it != live.end(); ) {
-                if (it->first.second == tab.filePath) it = live.erase(it);
-                else ++it;
+              auto &live = owner->scriptEngine->liveInstances;
+              for (auto it = live.begin(); it != live.end();) {
+                if (it->first.second == tab.filePath)
+                  it = live.erase(it);
+                else
+                  ++it;
               }
             }
           }
@@ -274,10 +364,12 @@ void Editor::DrawScriptEditors() {
           if (owner->scriptEngine) {
             owner->scriptEngine->compiledScripts.erase(tab.filePath);
             // Clear live instances to force reload
-            auto& live = owner->scriptEngine->liveInstances;
-            for (auto it = live.begin(); it != live.end(); ) {
-              if (it->first.second == tab.filePath) it = live.erase(it);
-              else ++it;
+            auto &live = owner->scriptEngine->liveInstances;
+            for (auto it = live.begin(); it != live.end();) {
+              if (it->first.second == tab.filePath)
+                it = live.erase(it);
+              else
+                ++it;
             }
           }
         }
@@ -328,44 +420,36 @@ void Editor::DrawSceneView() {
 
     rlImGuiImageRenderTexture(&owner->viewportTarget);
 
-    // Drop Target for Scene View (Spawning Entities)
-    if (ImGui::BeginDragDropTarget()) {
-      if (const ImGuiPayload *payload =
-              ImGui::AcceptDragDropPayload("ASSET_PATH")) {
-        const char *path = (const char *)payload->Data;
-        std::string sPath(path);
-        std::string ext = fs::path(sPath).extension().string();
-
-        if (ext == ".png" || ext == ".jpg" || ext == ".bmp") {
-          Entity e = owner->registry->CreateEntity();
-          Vector2 mouseWorld =
-              GetScreenToWorld2D(GetMousePosition(), owner->GetCamera());
-
-          TransformComponent t;
-          t.position = mouseWorld;
-          t.scale = {1.0f, 1.0f};
-          t.rotation = 0.0f;
-          t.padding = 0.0f;
-          owner->registry->AddComponent(e, t);
-
-          VelocityComponent v;
-          v.speed = {0.0f, 0.0f};
-          v.pad[0] = 0.0f;
-          v.pad[1] = 0.0f;
-          owner->registry->AddComponent(e, v);
-
-          SpriteComponent sprite;
-          sprite.texturePath = sPath;
-          owner->assets.LoadTextureAsset(sPath, sPath);
-          sprite.texture = owner->assets.GetTexture(sPath);
-          owner->registry->AddComponent(e, sprite);
-
-          owner->selectedEntity = e;
+    // Gizmo Toolbar Overlay
+    ImGui::SetCursorPos(ImVec2(20, 20));
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 4.0f);
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0, 0, 0, 0.4f));
+    if (ImGui::BeginChild("GizmoToolbar", ImVec2(110, 35), true,
+                          ImGuiWindowFlags_NoScrollbar)) {
+      auto ModeButton = [&](const char *label, GizmoMode mode,
+                            const char *activeColor) {
+        bool active = (currentGizmoMode == mode);
+        if (active)
+          ImGui::PushStyleColor(ImGuiCol_Button,
+                                ImVec4(0.2f, 0.6f, 0.8f, 1.0f));
+        if (ImGui::Button(label, ImVec2(30, 0))) {
+          currentGizmoMode = mode;
         }
-      }
-      ImGui::EndDragDropTarget();
-      draggedAssetIndex = -1;
+        if (active)
+          ImGui::PopStyleColor();
+      };
+
+      ModeButton("T", GIZMO_TRANSLATE, "Translate");
+      ImGui::SameLine();
+      ModeButton("R", GIZMO_ROTATE, "Rotate");
+      ImGui::SameLine();
+      ModeButton("S", GIZMO_SCALE, "Scale");
     }
+    ImGui::EndChild();
+    ImGui::PopStyleColor();
+    ImGui::PopStyleVar();
+
+
 
     // Input handling focused on this window
     owner->IsMouseOverViewport = ImGui::IsWindowHovered();
@@ -462,9 +546,11 @@ void Editor::DrawTransportBar() {
 void Editor::Render() {
   if (!owner->projectManager.HasActiveProject()) {
     // Draw Project Hub
+      int sw = GetScreenWidth();
+	  int sh = GetScreenHeight();
     ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(),
                             ImGuiCond_Always, ImVec2(0.5f, 0.5f));
-    ImGui::SetNextWindowSize(ImVec2(600, 400), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(sw, sh), ImGuiCond_Always);
 
     ImGuiWindowFlags flags =
         ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize |
@@ -473,7 +559,9 @@ void Editor::Render() {
 
     if (ImGui::Begin("BDEngine - Project Hub", nullptr, flags)) {
       ImGui::Columns(2, "HubColumns", false);
-      ImGui::SetColumnWidth(0, 150);
+      ImGui::SetColumnWidth(0, sw/4);
+      ImGui::SetColumnWidth(1, 3 * sw / 4);
+
 
       ImGui::Text("Actions");
       ImGui::Separator();
@@ -584,7 +672,8 @@ void Editor::Render() {
   }
 
   ImGui::Separator();
-  if (ImGui::Button("Create Entity", ImVec2(ImGui::GetContentRegionAvail().x, 25))) {
+  if (ImGui::Button("Create Entity",
+                    ImVec2(ImGui::GetContentRegionAvail().x, 25))) {
     owner->registry->CreateEntity();
   }
   ImGui::End();
@@ -664,6 +753,8 @@ void Editor::Render() {
       draggedAssetIndex = -1; // Stale index, reset
     }
   }
+
+  DrawTilingManager();
 }
 
 void Editor::DrawMenuBar() {
@@ -930,19 +1021,19 @@ void DrawInspector(Entity e, Registry &reg, int screenWidth, int screenHeight,
     }
     ImGui::SameLine();
     if (ImGui::Button("Delete", ImVec2(100, 0))) {
-        reg.DestroyEntity(e);
-        engine->selectedEntity = -1;
-        ImGui::PopID();
-        return;
+      reg.DestroyEntity(e);
+      engine->selectedEntity = -1;
+      ImGui::PopID();
+      return;
     }
   } else {
     ImGui::TextDisabled("ENTITY %i", e);
     ImGui::SameLine(ImGui::GetContentRegionAvail().x - 100);
     if (ImGui::Button("Delete", ImVec2(100, 0))) {
-        reg.DestroyEntity(e);
-        engine->selectedEntity = -1;
-        ImGui::PopID();
-        return;
+      reg.DestroyEntity(e);
+      engine->selectedEntity = -1;
+      ImGui::PopID();
+      return;
     }
   }
   ImGui::Separator();
@@ -1078,12 +1169,12 @@ void DrawInspector(Entity e, Registry &reg, int screenWidth, int screenHeight,
 
         // Migration from legacy scriptPaths to instances
         if (sc.instances.empty() && !sc.scriptPaths.empty()) {
-            for (const auto& path : sc.scriptPaths) {
-                ScriptInstanceData inst;
-                inst.path = path;
-                sc.instances.push_back(inst);
-            }
-            sc.scriptPaths.clear();
+          for (const auto &path : sc.scriptPaths) {
+            ScriptInstanceData inst;
+            inst.path = path;
+            sc.instances.push_back(inst);
+          }
+          sc.scriptPaths.clear();
         }
 
         // Drop target for adding scripts
@@ -1095,15 +1186,18 @@ void DrawInspector(Entity e, Registry &reg, int screenWidth, int screenHeight,
             std::string sPath(path);
             if (fs::path(sPath).extension() == ".lua") {
               bool found = false;
-              for (auto& inst : sc.instances) {
-                  if (inst.path == sPath) { found = true; break; }
+              for (auto &inst : sc.instances) {
+                if (inst.path == sPath) {
+                  found = true;
+                  break;
+                }
               }
               if (!found) {
                 ScriptInstanceData inst;
                 inst.path = sPath;
                 sc.instances.push_back(inst);
                 if (engine->scriptEngine) {
-                    engine->scriptEngine->LoadScript(e, sc.instances.back());
+                  engine->scriptEngine->LoadScript(e, sc.instances.back());
                 }
               }
             }
@@ -1112,11 +1206,13 @@ void DrawInspector(Entity e, Registry &reg, int screenWidth, int screenHeight,
         }
 
         for (int i = 0; i < (int)sc.instances.size(); i++) {
-          auto& inst = sc.instances[i];
+          auto &inst = sc.instances[i];
           ImGui::PushID(i);
-          
-          bool open = ImGui::TreeNodeEx(GetFileName(inst.path.c_str()), ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_Framed);
-          
+
+          bool open = ImGui::TreeNodeEx(GetFileName(inst.path.c_str()),
+                                        ImGuiTreeNodeFlags_DefaultOpen |
+                                            ImGuiTreeNodeFlags_Framed);
+
           // Edit button on the same line as header
           ImGui::SameLine(ImGui::GetContentRegionAvail().x - 70);
           if (ImGui::SmallButton("Edit")) {
@@ -1126,9 +1222,9 @@ void DrawInspector(Entity e, Registry &reg, int screenWidth, int screenHeight,
           // Refresh button
           ImGui::SameLine(ImGui::GetContentRegionAvail().x - 45);
           if (ImGui::SmallButton("R")) {
-              if (engine->scriptEngine) {
-                  engine->scriptEngine->LoadScript(e, inst);
-              }
+            if (engine->scriptEngine) {
+              engine->scriptEngine->LoadScript(e, inst);
+            }
           }
 
           // Remove button
@@ -1136,51 +1232,57 @@ void DrawInspector(Entity e, Registry &reg, int screenWidth, int screenHeight,
           if (ImGui::Button("X")) {
             sc.instances.erase(sc.instances.begin() + i);
             i--;
-            if (open) ImGui::TreePop();
+            if (open)
+              ImGui::TreePop();
             ImGui::PopID();
             continue;
           }
 
           if (open) {
             if (inst.properties.size() > 0) {
-                if (BeginPropertyGrid((std::string("script_props_") + std::to_string(i)).c_str())) {
-                    for (auto& prop : inst.properties) {
-                        switch (prop.type) {
-                            case PROP_FLOAT:
-                                PropertyLabel(prop.name.c_str());
-                                ImGui::DragFloat((std::string("##") + prop.name).c_str(), &prop.floatValue, 0.1f);
-                                break;
-                            case PROP_INT:
-                                PropertyLabel(prop.name.c_str());
-                                ImGui::DragInt((std::string("##") + prop.name).c_str(), &prop.intValue);
-                                break;
-                            case PROP_BOOL:
-                                PropertyLabel(prop.name.c_str());
-                                ImGui::Checkbox((std::string("##") + prop.name).c_str(), &prop.boolValue);
-                                break;
-                            case PROP_STRING:
-                                {
-                                    PropertyLabel(prop.name.c_str());
-                                    char buf[256];
-                                    strncpy(buf, prop.stringValue.c_str(), 255);
-                                    buf[255] = '\0';
-                                    if (ImGui::InputText((std::string("##") + prop.name).c_str(), buf, 256)) {
-                                        prop.stringValue = buf;
-                                    }
-                                }
-                                break;
-                            case PROP_VECTOR2:
-                                DrawVec2Control(prop.name, prop.vectorValue);
-                                break;
-                            case PROP_COLOR:
-                                DrawColorControl(prop.name, prop.colorValue);
-                                break;
-                        }
+              if (BeginPropertyGrid(
+                      (std::string("script_props_") + std::to_string(i))
+                          .c_str())) {
+                for (auto &prop : inst.properties) {
+                  switch (prop.type) {
+                  case PROP_FLOAT:
+                    PropertyLabel(prop.name.c_str());
+                    ImGui::DragFloat((std::string("##") + prop.name).c_str(),
+                                     &prop.floatValue, 0.1f);
+                    break;
+                  case PROP_INT:
+                    PropertyLabel(prop.name.c_str());
+                    ImGui::DragInt((std::string("##") + prop.name).c_str(),
+                                   &prop.intValue);
+                    break;
+                  case PROP_BOOL:
+                    PropertyLabel(prop.name.c_str());
+                    ImGui::Checkbox((std::string("##") + prop.name).c_str(),
+                                    &prop.boolValue);
+                    break;
+                  case PROP_STRING: {
+                    PropertyLabel(prop.name.c_str());
+                    char buf[256];
+                    strncpy(buf, prop.stringValue.c_str(), 255);
+                    buf[255] = '\0';
+                    if (ImGui::InputText(
+                            (std::string("##") + prop.name).c_str(), buf,
+                            256)) {
+                      prop.stringValue = buf;
                     }
-                    EndPropertyGrid();
+                  } break;
+                  case PROP_VECTOR2:
+                    DrawVec2Control(prop.name, prop.vectorValue);
+                    break;
+                  case PROP_COLOR:
+                    DrawColorControl(prop.name, prop.colorValue);
+                    break;
+                  }
                 }
+                EndPropertyGrid();
+              }
             } else {
-                ImGui::TextDisabled("  No serializable properties registered.");
+              ImGui::TextDisabled("  No serializable properties registered.");
             }
             ImGui::TreePop();
           }
@@ -1211,15 +1313,18 @@ void DrawInspector(Entity e, Registry &reg, int screenWidth, int screenHeight,
               out.close();
 
               bool found = false;
-              for (auto& inst : sc.instances) {
-                  if (inst.path == scriptPath) { found = true; break; }
+              for (auto &inst : sc.instances) {
+                if (inst.path == scriptPath) {
+                  found = true;
+                  break;
+                }
               }
               if (!found) {
                 ScriptInstanceData inst;
                 inst.path = scriptPath;
                 sc.instances.push_back(inst);
                 if (engine->scriptEngine) {
-                    engine->scriptEngine->LoadScript(e, sc.instances.back());
+                  engine->scriptEngine->LoadScript(e, sc.instances.back());
                 }
               }
 
@@ -1299,10 +1404,33 @@ void DrawInspector(Entity e, Registry &reg, int screenWidth, int screenHeight,
         }
       }
     }
+ 
+    // TILEMAP COMPONENT
+    if (reg.HasComponent(e, COMP_TILEMAP)) {
+      if (ImGui::CollapsingHeader("Tilemap", ImGuiTreeNodeFlags_DefaultOpen)) {
+        auto &map = reg.tilemaps[e];
+        if (BeginPropertyGrid("tilemap_grid")) {
+          PropertyLabel("Width");
+          if (ImGui::InputInt("##TMWidth", &map.width)) map.tiles.resize(map.width * map.height);
+          PropertyLabel("Height");
+          if (ImGui::InputInt("##TMHeight", &map.height)) map.tiles.resize(map.width * map.height);
+          PropertyLabel("Tile Size");
+          ImGui::InputInt("##TMTS", &map.tileSize);
+          PropertyLabel("TileSet");
+          ImGui::Text("%s", map.tileSetPath.c_str());
+          EndPropertyGrid();
+        }
+        if (ImGui::Button("Open Tiling Manager")) {
+          engine->editor->showTilingManager = true;
+          engine->editor->activeTilemapEntity = e;
+        }
+      }
+    }
 
     // ANIMATION
     if (reg.HasComponent(e, COMP_SPRITE_ANIMATION)) {
-      if (ImGui::CollapsingHeader("Animation", ImGuiTreeNodeFlags_DefaultOpen)) {
+      if (ImGui::CollapsingHeader("Animation",
+                                  ImGuiTreeNodeFlags_DefaultOpen)) {
         auto &sa = reg.spriteAnimations[e];
         if (BeginPropertyGrid("anim_grid")) {
           PropertyLabel("Columns");
@@ -1317,73 +1445,78 @@ void DrawInspector(Entity e, Registry &reg, int screenWidth, int screenHeight,
         ImGui::Separator();
 
         std::string stateToRemove = "";
-        for (auto& pair : sa.states) {
-            std::string name = pair.first;
-            auto& state = pair.second;
-            ImGui::PushID(name.c_str());
-            bool isOpen = ImGui::TreeNodeEx(name.c_str(), ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_Framed);
-            
-            ImGui::SameLine(ImGui::GetContentRegionAvail().x - 20);
-            if (ImGui::Button("X")) {
-                stateToRemove = name;
+        for (auto &pair : sa.states) {
+          std::string name = pair.first;
+          auto &state = pair.second;
+          ImGui::PushID(name.c_str());
+          bool isOpen =
+              ImGui::TreeNodeEx(name.c_str(), ImGuiTreeNodeFlags_DefaultOpen |
+                                                  ImGuiTreeNodeFlags_Framed);
+
+          ImGui::SameLine(ImGui::GetContentRegionAvail().x - 20);
+          if (ImGui::Button("X")) {
+            stateToRemove = name;
+          }
+
+          if (isOpen) {
+            if (BeginPropertyGrid((name + "_grid").c_str())) {
+              PropertyLabel("Start Frame");
+              ImGui::DragInt("##SF", &state.startFrame, 1, 0, sa.columns - 1);
+              PropertyLabel("Start Row");
+              ImGui::DragInt("##SR", &state.startRow, 1, 0, sa.rows - 1);
+              PropertyLabel("End Frame");
+              ImGui::DragInt("##EF", &state.endFrame, 1, 0, sa.columns - 1);
+              PropertyLabel("End Row");
+              ImGui::DragInt("##ER", &state.endRow, 1, 0, sa.rows - 1);
+
+              PropertyLabel("FPS");
+              float fps =
+                  (state.frameDuration > 0) ? (1.0f / state.frameDuration) : 0;
+              if (ImGui::DragFloat("##FPS", &fps, 1.0f, 1.0f, 120.0f)) {
+                state.frameDuration = 1.0f / fps;
+              }
+
+              PropertyLabel("Loop");
+              ImGui::Checkbox("##Loop", &state.loop);
+              EndPropertyGrid();
             }
 
-            if (isOpen) {
-                if (BeginPropertyGrid((name + "_grid").c_str())) {
-                    PropertyLabel("Start Frame");
-                    ImGui::DragInt("##SF", &state.startFrame, 1, 0, sa.columns - 1);
-                    PropertyLabel("Start Row");
-                    ImGui::DragInt("##SR", &state.startRow, 1, 0, sa.rows - 1);
-                    PropertyLabel("End Frame");
-                    ImGui::DragInt("##EF", &state.endFrame, 1, 0, sa.columns - 1);
-                    PropertyLabel("End Row");
-                    ImGui::DragInt("##ER", &state.endRow, 1, 0, sa.rows - 1);
-
-                    PropertyLabel("FPS");
-                    float fps = (state.frameDuration > 0) ? (1.0f / state.frameDuration) : 0;
-                    if (ImGui::DragFloat("##FPS", &fps, 1.0f, 1.0f, 120.0f)) {
-                      state.frameDuration = 1.0f / fps;
-                    }
-
-                    PropertyLabel("Loop");
-                    ImGui::Checkbox("##Loop", &state.loop);
-                    EndPropertyGrid();
-                }
-                
-                if (sa.currentState == name && sa.isPlaying) {
-                    ImGui::TextColored(ImVec4(0, 1, 0, 1), "Playing...");
-                } else {
-                    if (ImGui::Button("Play Preview")) {
-                        sa.currentState = name;
-                        sa.currentFrame = state.startFrame;
-                        sa.currentRow = state.startRow;
-                        sa.elapsedTime = 0.0f;
-                        sa.isPlaying = true;
-                    }
-                }
-                ImGui::TreePop();
+            if (sa.currentState == name && sa.isPlaying) {
+              ImGui::TextColored(ImVec4(0, 1, 0, 1), "Playing...");
+            } else {
+              if (ImGui::Button("Play Preview")) {
+                sa.currentState = name;
+                sa.currentFrame = state.startFrame;
+                sa.currentRow = state.startRow;
+                sa.elapsedTime = 0.0f;
+                sa.isPlaying = true;
+              }
             }
-            ImGui::PopID();
+            ImGui::TreePop();
+          }
+          ImGui::PopID();
         }
-        
+
         if (!stateToRemove.empty()) {
-            sa.states.erase(stateToRemove);
-            if (sa.currentState == stateToRemove) sa.currentState = "";
+          sa.states.erase(stateToRemove);
+          if (sa.currentState == stateToRemove)
+            sa.currentState = "";
         }
-        
+
         ImGui::Spacing();
         static char newStateName[64] = "";
         ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - 50);
         ImGui::InputText("##NewStateName", newStateName, 64);
         ImGui::SameLine();
         if (ImGui::Button("Add")) {
-            if (strlen(newStateName) > 0 && sa.states.find(newStateName) == sa.states.end()) {
-                AnimationState st;
-                st.name = newStateName;
-                st.endFrame = sa.columns - 1; // default to last column 
-                sa.states[newStateName] = st;
-                newStateName[0] = '\0';
-            }
+          if (strlen(newStateName) > 0 &&
+              sa.states.find(newStateName) == sa.states.end()) {
+            AnimationState st;
+            st.name = newStateName;
+            st.endFrame = sa.columns - 1; // default to last column
+            sa.states[newStateName] = st;
+            newStateName[0] = '\0';
+          }
         }
       }
     }
@@ -1437,8 +1570,8 @@ void DrawInspector(Entity e, Registry &reg, int screenWidth, int screenHeight,
           ImGui::MenuItem("Circle Collider")) {
         CircleColliderComponent cc;
         if (reg.HasComponent(e, COMP_SPRITE)) {
-            auto& s = reg.sprites[e];
-            cc.radius = (float)std::max(s.texture.width, s.texture.height) * 0.5f;
+          auto &s = reg.sprites[e];
+          cc.radius = (float)std::max(s.texture.width, s.texture.height) * 0.5f;
         }
         reg.AddComponent(e, cc);
       }
@@ -1446,8 +1579,8 @@ void DrawInspector(Entity e, Registry &reg, int screenWidth, int screenHeight,
           ImGui::MenuItem("Box Collider")) {
         BoxColliderComponent bc;
         if (reg.HasComponent(e, COMP_SPRITE)) {
-            auto& s = reg.sprites[e];
-            bc.size = {(float)s.texture.width, (float)s.texture.height};
+          auto &s = reg.sprites[e];
+          bc.size = {(float)s.texture.width, (float)s.texture.height};
         }
         reg.AddComponent(e, bc);
       }
@@ -1469,7 +1602,7 @@ void DrawInspector(Entity e, Registry &reg, int screenWidth, int screenHeight,
         sa.currentRow = 0;
         sa.elapsedTime = 0.0f;
         sa.isPlaying = true;
-        
+
         AnimationState idle;
         idle.name = "Idle";
         idle.endFrame = 7;
@@ -1477,6 +1610,14 @@ void DrawInspector(Entity e, Registry &reg, int screenWidth, int screenHeight,
         sa.currentState = "Idle";
 
         reg.AddComponent(e, sa);
+      }
+      if (!reg.HasComponent(e, COMP_TILEMAP) && ImGui::MenuItem("Tilemap")) {
+        TilemapComponent map;
+        map.width = 30;
+        map.height = 30;
+        map.tileSize = 32;
+        map.tiles.resize(map.width * map.height);
+        reg.AddComponent(e, map);
       }
 
       ImGui::EndPopup();
@@ -1745,4 +1886,222 @@ void Editor::DrawConsole() {
   ImGui::EndChild();
 
   ImGui::End();
+}
+
+void Editor::DrawTilingManager() {
+    if (!showTilingManager) return;
+    
+    static std::string slicerImagePath = "";
+    static int sliceTileSize = 32;
+    static int slicePadding = 0;
+    static int sliceOffset = 0;
+
+    if (ImGui::Begin("Tiling Manager", &showTilingManager)) {
+        // 1. Selector for Active Tilemap
+        if (ImGui::CollapsingHeader("Active Tilemap", ImGuiTreeNodeFlags_DefaultOpen)) {
+            if (activeTilemapEntity == -1 || !owner->registry->HasComponent(activeTilemapEntity, COMP_TILEMAP)) {
+                ImGui::TextColored(ImVec4(1, 0, 0, 1), "No active Tilemap selected.");
+                ImGui::Text("Select a Tilemap component in the Inspector.");
+            } else {
+                auto& map = owner->registry->tilemaps[activeTilemapEntity];
+                auto& name = owner->registry->names[activeTilemapEntity];
+                ImGui::Text("Editing: %s (Entity %d)", name.name.c_str(), activeTilemapEntity);
+                
+                // Asset drop target for TileSet
+                ImGui::Text("TileSet: %s", map.tileSetPath.empty() ? "(none)" : GetFileName(map.tileSetPath.c_str()));
+                if (ImGui::Button("Drop .bdtileset OR Texture Here", ImVec2(-1, 30))) {}
+                if (ImGui::BeginDragDropTarget()) {
+                    if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
+                        std::string path((const char*)payload->Data);
+                        std::string ext = GetFileExtension(path.c_str());
+                        
+                        if (ext == ".bdtileset") {
+                            map.tileSetPath = path;
+                        } else if (ext == ".png" || ext == ".jpg") {
+                            slicerImagePath = path;
+                            sliceTileSize = map.tileSize;
+                            ImGui::OpenPopup("Sprite Slicer");
+                        }
+                    }
+                    ImGui::EndDragDropTarget();
+                }
+
+                if (ImGui::BeginPopupModal("Sprite Slicer", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+                    ImGui::Text("Slicing: %s", GetFileName(slicerImagePath.c_str()));
+                    ImGui::Separator();
+                    
+                    ImGui::InputInt("Tile Size", &sliceTileSize);
+                    ImGui::InputInt("Padding", &slicePadding);
+                    ImGui::InputInt("Offset", &sliceOffset);
+                    
+                    if (sliceTileSize < 1) sliceTileSize = 1;
+                    if (slicePadding < 0) slicePadding = 0;
+                    if (sliceOffset < 0) sliceOffset = 0;
+
+                    if (ImGui::Button("Generate", ImVec2(120, 0))) {
+                        std::string tsName = GetFileNameWithoutExt(slicerImagePath.c_str());
+                        std::string newTsPath = "assets/" + tsName + ".bdtileset";
+                        
+                        owner->assets.LoadTextureAsset(tsName, slicerImagePath);
+                        Texture2D tex = owner->assets.GetTexture(tsName);
+                        if (tex.id != 0) {
+                            TileSet ts;
+                            ts.name = tsName;
+                            ts.texturePath = slicerImagePath;
+                            ts.texture = tex;
+                            ts.tileSize = sliceTileSize;
+                            map.tileSize = sliceTileSize; // Sync map size
+            
+                            int cols = (tex.width - sliceOffset) / (ts.tileSize + slicePadding);
+                            int rows = (tex.height - sliceOffset) / (ts.tileSize + slicePadding);
+                            
+                            for (int y = 0; y < rows; y++) {
+                                for (int x = 0; x < cols; x++) {
+                                    ts.sourceRects.push_back({ (float)(sliceOffset + x * (ts.tileSize + slicePadding)), 
+                                                               (float)(sliceOffset + y * (ts.tileSize + slicePadding)), 
+                                                               (float)ts.tileSize, (float)ts.tileSize });
+                                    TileConfig cfg;
+                                    cfg.index = (int)ts.sourceRects.size() - 1;
+                                    ts.tileConfigs.push_back(cfg);
+                                }
+                            }
+                            
+                            ts.Save(newTsPath);
+                            owner->assets.AddTileSet(newTsPath, ts);
+                            map.tileSetPath = newTsPath;
+                        }
+                        ImGui::CloseCurrentPopup();
+                    }
+                    ImGui::SetItemDefaultFocus();
+                    ImGui::SameLine();
+                    if (ImGui::Button("Cancel", ImVec2(120, 0))) {
+                        ImGui::CloseCurrentPopup();
+                    }
+                    ImGui::EndPopup();
+                }
+            }
+        }
+
+        // 2. Painting Tools
+        if (activeTilemapEntity != -1 && owner->registry->HasComponent(activeTilemapEntity, COMP_TILEMAP)) {
+            auto& map = owner->registry->tilemaps[activeTilemapEntity];
+            if (!map.tileSetPath.empty()) {
+                TileSet* ts = owner->assets.GetTileSet(map.tileSetPath);
+                if (ts && ts->texture.id != 0) {
+                    if (ImGui::CollapsingHeader("Palette", ImGuiTreeNodeFlags_DefaultOpen)) {
+                        
+                        // Mode Selection
+                        if (ImGui::RadioButton("Select", currentTilingMode == TILE_SELECT)) currentTilingMode = TILE_SELECT;
+                        ImGui::SameLine();
+                        if (ImGui::RadioButton("Paint", currentTilingMode == TILE_PAINT)) currentTilingMode = TILE_PAINT;
+                        ImGui::SameLine();
+                        if (ImGui::RadioButton("Erase", currentTilingMode == TILE_ERASE)) currentTilingMode = TILE_ERASE;
+                        ImGui::SameLine();
+                        if (ImGui::Button("Edit Rules...")) {
+                            ImGui::OpenPopup("Rule Editor");
+                        }
+
+                        ImGui::Separator();
+
+                        // Palette Grid
+                        float iconSize = 48.0f;
+                        float panelWidth = ImGui::GetContentRegionAvail().x;
+                        int columns = (int)(panelWidth / (iconSize + 8.0f));
+                        if (columns < 1) columns = 1;
+
+                        if (ImGui::BeginTable("TilePalette", columns)) {
+                            for (int i = 0; i < (int)ts->sourceRects.size(); i++) {
+                                ImGui::TableNextColumn();
+                                ImGui::PushID(i);
+                                
+                                bool isSelected = (selectedTileIndex == i);
+                                if (isSelected) {
+                                    ImGui::TableSetBgColor(ImGuiTableBgTarget_CellBg, ImGui::GetColorU32(ImVec4(0.8f, 0.6f, 0.2f, 0.8f)));
+                                }
+
+                                // We need to calculate UVs for the sub-texture
+                                Rectangle src = ts->sourceRects[i];
+                                ImVec2 uv0 = { src.x / ts->texture.width, src.y / ts->texture.height };
+                                ImVec2 uv1 = { (src.x + src.width) / ts->texture.width, (src.y + src.height) / ts->texture.height };
+                                
+                                std::string btnId = "Tile_" + std::to_string(i);
+                                if (ImGui::ImageButton(btnId.c_str(), (void*)(intptr_t)ts->texture.id, ImVec2(iconSize, iconSize), uv0, uv1)) {
+                                    selectedTileIndex = i;
+                                    currentTilingMode = TILE_PAINT;
+                                }
+                                ImGui::PopID();
+                            }
+                            ImGui::EndTable();
+                        }
+                        
+                        // Rule Editor Modal
+                        if (ImGui::BeginPopupModal("Rule Editor", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+                            if (selectedTileIndex >= 0 && selectedTileIndex < (int)ts->tileConfigs.size()) {
+                                TileConfig& cfg = ts->tileConfigs[selectedTileIndex];
+                                ImGui::Text("Editing Rules for Tile #%d", selectedTileIndex);
+                                ImGui::Checkbox("Is Rule Tile", &cfg.isRuleTile);
+                                
+                                if (cfg.isRuleTile) {
+                                    if (ImGui::Button("Add Rule")) {
+                                        TileRule r;
+                                        r.outputIndex = selectedTileIndex;
+                                        for (int n=0;n<8;n++) r.neighbors[n] = NeighborCondition::IGNORE;
+                                        cfg.rules.push_back(r);
+                                    }
+                                    ImGui::Separator();
+                                    
+                                    for (int r = 0; r < (int)cfg.rules.size(); r++) {
+                                        ImGui::PushID(r);
+                                        TileRule& rule = cfg.rules[r];
+                                        ImGui::Text("Rule %d", r);
+                                        ImGui::SameLine();
+                                        if (ImGui::Button("Remove")) {
+                                            cfg.rules.erase(cfg.rules.begin() + r);
+                                            r--;
+                                            ImGui::PopID();
+                                            continue;
+                                        }
+                                        ImGui::InputInt("Output Tile", &rule.outputIndex);
+                                        
+                                        int mapping[9] = { 7, 0, 1, 6, -1, 2, 5, 4, 3 };
+                                        const char* condLabels[] = { "Ignore", "Occupied", "Empty" };
+                                        
+                                        if (ImGui::BeginTable("NeighborGrid", 3, ImGuiTableFlags_Borders)) {
+                                            for (int gridY=0; gridY<3; gridY++) {
+                                                ImGui::TableNextRow();
+                                                for (int gridX=0; gridX<3; gridX++) {
+                                                    ImGui::TableNextColumn();
+                                                    int m = mapping[gridY*3 + gridX];
+                                                    if (m == -1) {
+                                                        ImGui::Text(" [Self] ");
+                                                    } else {
+                                                        int cond = (int)rule.neighbors[m];
+                                                        if (ImGui::Button(TextFormat("%s##%d", condLabels[cond], m), ImVec2(-1, 0))) {
+                                                            cond = (cond + 1) % 3;
+                                                            rule.neighbors[m] = (NeighborCondition)cond;
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            ImGui::EndTable();
+                                        }
+                                        ImGui::Separator();
+                                        ImGui::PopID();
+                                    }
+                                }
+                            }
+                            
+                            if (ImGui::Button("Close", ImVec2(120,0))) {
+                                ts->Save(map.tileSetPath);
+                                ImGui::CloseCurrentPopup();
+                            }
+                            ImGui::EndPopup();
+                        }
+                        
+                    }
+                }
+            }
+        }
+    }
+    ImGui::End();
 }

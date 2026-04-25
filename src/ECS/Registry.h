@@ -24,6 +24,7 @@ public:
     materials.resize(MAX_ENTITIES);
     lights.resize(MAX_ENTITIES);
     cameras.resize(MAX_ENTITIES);
+    tilemaps.resize(MAX_ENTITIES);
   }
 
   Entity CreateEntity() {
@@ -144,6 +145,12 @@ public:
     entityMasks[entity].set(COMP_CAMERA);
   }
 
+  void AddComponent(Entity entity, const TilemapComponent &c) {
+    if (entity < 0 || entity >= MAX_ENTITIES) return;
+    tilemaps[entity] = c;
+    entityMasks[entity].set(COMP_TILEMAP);
+  }
+
   bool HasComponent(Entity entity, ComponentType type) {
     if (entity < 0 || entity >= MAX_ENTITIES) return false;
     return entityMasks[entity].test(type);
@@ -182,6 +189,7 @@ public:
   std::vector<MaterialComponent> materials;
   std::vector<LightComponent> lights;
   std::vector<CameraComponent> cameras;
+  std::vector<TilemapComponent> tilemaps;
   std::vector<std::bitset<COMP_COUNT>> entityMasks;
 
 private:

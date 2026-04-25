@@ -21,5 +21,6 @@ enum ComponentType : std::uint8_t {
   COMP_MATERIAL,
   COMP_LIGHT,
   COMP_CAMERA,
+  COMP_TILEMAP,
   COMP_COUNT
 };

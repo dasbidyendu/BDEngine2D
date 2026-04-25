@@ -50,11 +50,26 @@ public:
   int draggedAssetIndex = -1;
 
   enum EditorMode { MODE_WORLD, MODE_UI_EDITOR } currentMode = MODE_WORLD;
+  enum GizmoMode { GIZMO_TRANSLATE, GIZMO_ROTATE, GIZMO_SCALE } currentGizmoMode = GIZMO_TRANSLATE;
+  enum GizmoAxis { AXIS_NONE, AXIS_X, AXIS_Y, AXIS_CENTER } activeGizmoAxis = AXIS_NONE, hoveredGizmoAxis = AXIS_NONE;
 
   Entity activeCanvasId = -1;
 
   Vector2 sceneViewPos = {0, 0};
   Vector2 sceneViewSize = {0, 0};
+  bool isDraggingGizmo = false;
+  Vector2 gizmoDragStartPos = {0, 0};
+  Vector2 gizmoDragStartValue = {0, 0};
+  float gizmoDragStartRotation = 0.0f;
+  
+  // Tiling Editor State
+  enum TilingMode { TILE_PAINT, TILE_ERASE, TILE_SELECT } currentTilingMode = TILE_PAINT;
+  int selectedTileIndex = 0;
+  bool showTilingManager = true;
+  Entity activeTilemapEntity = -1;
+  int brushSize = 1;
+
+  void DrawTilingManager();
 
 private:
   Engine *owner;

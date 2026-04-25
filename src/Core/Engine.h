@@ -16,6 +16,7 @@
 #include "Physics.h"
 #include "Profiler.h"
 #include "Utils/AssetEntry.h"
+#include "Utils/SetupHelper.h"
 
 class Editor;
 

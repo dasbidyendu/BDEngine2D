@@ -8,6 +8,94 @@
 
 class Engine;
 
+namespace TilemapSystem {
+    inline void Draw(Registry& reg, ResourceManager& assets) {
+        for (Entity i : reg.activeEntities) {
+            if (reg.HasComponent(i, COMP_TILEMAP) && reg.HasComponent(i, COMP_TRANSFORM)) {
+                auto& map = reg.tilemaps[i];
+                auto& t = reg.transforms[i];
+
+                if (map.tileSetPath.empty()) continue;
+                TileSet* ts = assets.GetTileSet(map.tileSetPath);
+                if (!ts || ts->texture.id == 0) continue;
+
+                for (int y = 0; y < map.height; y++) {
+                    for (int x = 0; x < map.width; x++) {
+                        int idx = y * map.width + x;
+                        if (idx >= (int)map.tiles.size()) continue;
+                        const auto& tile = map.tiles[idx];
+                        if (tile.index < 0 || tile.index >= (int)ts->sourceRects.size()) continue;
+
+                        Rectangle source = ts->sourceRects[tile.index];
+                        if (tile.flipX) source.width *= -1;
+                        if (tile.flipY) source.height *= -1;
+
+                        Rectangle dest = {
+                            t.position.x + x * map.tileSize * t.scale.x,
+                            t.position.y + y * map.tileSize * t.scale.y,
+                            (float)map.tileSize * t.scale.x,
+                            (float)map.tileSize * t.scale.y
+                        };
+
+                        DrawTexturePro(ts->texture, source, dest, {0,0}, 0.0f, tile.tint);
+                    }
+                }
+            }
+        }
+    }
+
+    inline void ApplyRules(TilemapComponent& map, int x, int y, TileSet* ts) {
+        if (!ts || x < 0 || x >= map.width || y < 0 || y >= map.height) return;
+        int idx = y * map.width + x;
+        int currentTileIndex = map.tiles[idx].index;
+        if (currentTileIndex == -1) return;
+
+        const TileConfig* config = nullptr;
+        for (const auto& c : ts->tileConfigs) {
+            if (c.index == currentTileIndex) {
+                config = &c;
+                break;
+            }
+        }
+
+        if (!config || !config->isRuleTile || config->rules.empty()) return;
+
+        int dx[] = { 0, 1, 1, 1, 0, -1, -1, -1 };
+        int dy[] = { -1,-1, 0, 1, 1, 1, 0, -1 };
+
+        for (const auto& rule : config->rules) {
+            bool match = true;
+            for (int i = 0; i < 8; i++) {
+                int nx = x + dx[i];
+                int ny = y + dy[i];
+                NeighborCondition cond = rule.neighbors[i];
+                if (cond == NeighborCondition::IGNORE) continue;
+
+                bool isOccupied = false;
+                if (nx >= 0 && nx < map.width && ny >= 0 && ny < map.height) {
+                    isOccupied = (map.tiles[ny * map.width + nx].index != -1);
+                }
+
+                if (cond == NeighborCondition::OCCUPIED && !isOccupied) { match = false; break; }
+                if (cond == NeighborCondition::EMPTY && isOccupied) { match = false; break; }
+            }
+            if (match) {
+                map.tiles[idx].index = rule.outputIndex;
+                return;
+            }
+        }
+    }
+
+    inline void RefreshRules(TilemapComponent& map, int x, int y, TileSet* ts) {
+        ApplyRules(map, x, y, ts);
+        int dx[] = { 0, 1, 1, 1, 0, -1, -1, -1 };
+        int dy[] = { -1,-1, 0, 1, 1, 1, 0, -1 };
+        for (int i = 0; i < 8; i++) {
+            ApplyRules(map, x + dx[i], y + dy[i], ts);
+        }
+    }
+}
+
 namespace MovementSystem {
     inline void Update(Registry& reg, float dt) {
         for (Entity i :reg.activeEntities) {

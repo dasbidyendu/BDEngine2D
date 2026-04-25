@@ -3,6 +3,7 @@
 #include "Editor.h"
 #include "Managers/SceneManager.h"
 #include "raylib.h"
+#include "Managers/HotkeyManager.h"
 #include <fstream>
 #include <sstream>
 
@@ -47,7 +48,9 @@ Engine::Engine(int width, int height, const std::string &title)
   camera.rotation = 0.0f;
   camera.zoom = 1.0f;
 
-  GuiSetStyle(DEFAULT, TEXT_SIZE, 16);
+  GuiSetStyle(DEFAULT, TEXT_SIZE, 24);
+
+  SetupHelper::InitImguiStyle(io);
 
   registry = std::make_unique<Registry>();
 
@@ -250,7 +253,7 @@ void Engine::Update() {
 
   stats.frameCount++;
 
-  if (IsKeyDown(KEY_LEFT_CONTROL) && IsKeyPressed(KEY_S)) {
+  if (HotkeyManager::Get().IsPressed("SaveScene")) {
     if (!activeScenePath.empty()) {
       SceneManager::SaveScene(activeScenePath, *registry);
       Logger::AddLog(LOG_LEVEL_SUCCESS, "Saved scene to %s",
@@ -412,6 +415,7 @@ void Engine::Render() {
   BeginMode2D(sceneCamera);
   
   // Render the world for the editor view
+  TilemapSystem::Draw(*registry, assets);
   RenderSystem::Draw(*registry);
   DebugSystem::PhysicsDebug(*registry, camera);
   
@@ -425,11 +429,114 @@ void Engine::Render() {
     auto &t = registry->transforms[selectedEntity];
     if (registry->HasComponent(selectedEntity, COMP_SPRITE)) {
       auto &s = registry->sprites[selectedEntity];
-      Rectangle outline = {t.position.x - 2, t.position.y - 2,
-                           (s.texture.width * t.scale.x) + 4,
-                           (s.texture.height * t.scale.y) + 4};
+      Rectangle outline = {t.position.x - (s.texture.width * t.scale.x * s.anchor.x) - 2, 
+                           t.position.y - (s.texture.height * t.scale.y * s.anchor.y) - 2,
+                           ((float)s.texture.width * t.scale.x) + 4,
+                           ((float)s.texture.height * t.scale.y) + 4};
       DrawRectangleLinesEx(outline, 2.0f / camera.zoom, ORANGE);
     }
+
+    // --- GIZMOS ---
+    float gizmoSize = 60.0f / camera.zoom;
+    float thickness = 4.0f / camera.zoom;
+    
+    auto GetAxisColor = [&](Editor::GizmoAxis axis, Color defaultColor) -> Color {
+      if (editor->activeGizmoAxis == axis) return GOLD;
+      if (editor->hoveredGizmoAxis == axis) return WHITE;
+      return defaultColor;
+    };
+
+    if (editor->currentGizmoMode == Editor::GIZMO_TRANSLATE) {
+      Color colorX = GetAxisColor(Editor::AXIS_X, RED);
+      Color colorY = GetAxisColor(Editor::AXIS_Y, GREEN);
+      Color colorC = GetAxisColor(Editor::AXIS_CENTER, YELLOW);
+
+      // X Axis
+      DrawLineEx(t.position, Vector2{t.position.x + gizmoSize, t.position.y}, thickness, colorX);
+      DrawTriangle(Vector2{t.position.x + gizmoSize + (12/camera.zoom), t.position.y},
+                   Vector2{t.position.x + gizmoSize, t.position.y - (6/camera.zoom)},
+                   Vector2{t.position.x + gizmoSize, t.position.y + (6/camera.zoom)}, colorX);
+      
+      // Y Axis
+      DrawLineEx(t.position, Vector2{t.position.x, t.position.y - gizmoSize}, thickness, colorY);
+      DrawTriangle(Vector2{t.position.x, t.position.y - gizmoSize - (12/camera.zoom)},
+                   Vector2{t.position.x + (6/camera.zoom), t.position.y - gizmoSize},
+                   Vector2{t.position.x - (6/camera.zoom), t.position.y - gizmoSize}, colorY);
+
+      // Center
+      DrawRectangleV(Vector2{t.position.x - (5/camera.zoom), t.position.y - (5/camera.zoom)}, 
+                     Vector2{10/camera.zoom, 10/camera.zoom}, colorC);
+    } 
+    else if (editor->currentGizmoMode == Editor::GIZMO_SCALE) {
+      Color colorX = GetAxisColor(Editor::AXIS_X, RED);
+      Color colorY = GetAxisColor(Editor::AXIS_Y, GREEN);
+      Color colorC = GetAxisColor(Editor::AXIS_CENTER, YELLOW);
+
+      // X Axis
+      DrawLineEx(t.position, Vector2{t.position.x + gizmoSize, t.position.y}, thickness, colorX);
+      DrawRectangleV(Vector2{t.position.x + gizmoSize, t.position.y - (6/camera.zoom)}, 
+                     Vector2{12/camera.zoom, 12/camera.zoom}, colorX);
+
+      // Y Axis
+      DrawLineEx(t.position, Vector2{t.position.x, t.position.y - gizmoSize}, thickness, colorY);
+      DrawRectangleV(Vector2{t.position.x - (6/camera.zoom), t.position.y - gizmoSize - (12/camera.zoom)}, 
+                     Vector2{12/camera.zoom, 12/camera.zoom}, colorY);
+
+      // Center
+      DrawRectangleLinesEx({t.position.x - (8/camera.zoom), t.position.y - (8/camera.zoom), 16/camera.zoom, 16/camera.zoom}, 
+                           thickness, colorC);
+    }
+    else if (editor->currentGizmoMode == Editor::GIZMO_ROTATE) {
+      Color color = GetAxisColor(Editor::AXIS_CENTER, BLUE);
+      DrawCircleLinesV(t.position, gizmoSize, color);
+      
+      // Rotation handle at the current rotation
+      Vector2 handlePos = { t.position.x + cosf(t.rotation * DEG2RAD) * gizmoSize, 
+                            t.position.y + sinf(t.rotation * DEG2RAD) * gizmoSize };
+      DrawCircleV(handlePos, 8.0f / camera.zoom, color);
+      DrawLineEx(t.position, handlePos, thickness * 0.5f, Fade(color, 0.5f));
+    }
+
+  }
+
+  if (editor->showTilingManager && editor->activeTilemapEntity != -1 && registry->HasComponent(editor->activeTilemapEntity, COMP_TILEMAP) && registry->HasComponent(editor->activeTilemapEntity, COMP_TRANSFORM)) {
+      if (editor->currentTilingMode == Editor::TILE_PAINT || editor->currentTilingMode == Editor::TILE_ERASE) {
+          auto& map = registry->tilemaps[editor->activeTilemapEntity];
+          auto& t = registry->transforms[editor->activeTilemapEntity];
+          
+          Vector2 mouseAbs = GetMousePosition();
+          Vector2 relativeMouse = { mouseAbs.x - editor->sceneViewPos.x, mouseAbs.y - editor->sceneViewPos.y };
+          Vector2 worldMouse = GetScreenToWorld2D(relativeMouse, sceneCamera);
+          
+          Vector2 localMouse = { (worldMouse.x - t.position.x) / t.scale.x, (worldMouse.y - t.position.y) / t.scale.y };
+          int tileX = floor(localMouse.x / map.tileSize);
+          int tileY = floor(localMouse.y / map.tileSize);
+          
+          Color previewTint = (editor->currentTilingMode == Editor::TILE_ERASE) ? Fade(RED, 0.4f) : Fade(WHITE, 0.6f);
+          
+          for (int dy = 0; dy < editor->brushSize; dy++) {
+              for (int dx = 0; dx < editor->brushSize; dx++) {
+                  int tx = tileX + dx;
+                  int ty = tileY + dy;
+                  
+                  Rectangle dest = {
+                      t.position.x + tx * map.tileSize * t.scale.x,
+                      t.position.y + ty * map.tileSize * t.scale.y,
+                      (float)map.tileSize * t.scale.x,
+                      (float)map.tileSize * t.scale.y
+                  };
+                  
+                  if (editor->currentTilingMode == Editor::TILE_PAINT && !map.tileSetPath.empty()) {
+                      TileSet* ts = assets.GetTileSet(map.tileSetPath);
+                      if (ts && editor->selectedTileIndex >= 0 && editor->selectedTileIndex < (int)ts->sourceRects.size()) {
+                          Rectangle src = ts->sourceRects[editor->selectedTileIndex];
+                          DrawTexturePro(ts->texture, src, dest, {0,0}, 0.0f, previewTint);
+                      }
+                  }
+                  DrawRectangleLinesEx(dest, 1.0f / camera.zoom, previewTint);
+              }
+          }
+      }
   }
 
   EndMode2D();

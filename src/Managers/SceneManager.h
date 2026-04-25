@@ -26,6 +26,7 @@ private:
     static void SaveMaterial(Entity e, Registry& reg, std::ostream& out);
     static void SaveLight(Entity e, Registry& reg, std::ostream& out);
     static void SaveCamera(Entity e, Registry& reg, std::ostream& out);
+    static void SaveTilemap(Entity e, Registry& reg, std::ostream& out);
 
     // --- COMPONENT LOADERS ---
     static void LoadName(Entity e, std::istream& in, Registry& reg);
@@ -43,4 +44,5 @@ private:
     static void LoadMaterial(Entity e, std::istream& in, Registry& reg, Engine* engine);
     static void LoadLight(Entity e, std::istream& in, Registry& reg);
     static void LoadCamera(Entity e, std::istream& in, Registry& reg);
+    static void LoadTilemap(Entity e, std::istream& in_line, std::istream& in_file, Registry& reg, Engine* engine);
 };

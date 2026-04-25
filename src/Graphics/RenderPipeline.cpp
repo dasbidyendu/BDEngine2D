@@ -36,7 +36,7 @@ void RenderPipeline::ExecuteMainGeometry(Registry& reg, ResourceManager& resourc
     BeginTextureMode(geometryTarget);
     ClearBackground(clearColor);
     BeginMode2D(camera);
-    
+    TilemapSystem::Draw(reg, resources);
     RenderSystem::Draw(reg);
     DebugSystem::PhysicsDebug(reg, camera);
     

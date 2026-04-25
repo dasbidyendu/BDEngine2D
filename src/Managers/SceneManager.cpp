@@ -29,6 +29,7 @@ void SceneManager::SaveScene(const std::string &filename, Registry &reg) {
         if (reg.HasComponent(i, COMP_MATERIAL)) SaveMaterial(i, reg, file);
         if (reg.HasComponent(i, COMP_LIGHT)) SaveLight(i, reg, file);
         if (reg.HasComponent(i, COMP_CAMERA)) SaveCamera(i, reg, file);
+        if (reg.HasComponent(i, COMP_TILEMAP)) SaveTilemap(i, reg, file);
 
         file << "END\n";
     }
@@ -72,6 +73,7 @@ void SceneManager::LoadScene(const std::string &filename, Registry &reg, Engine 
         else if (cmd == "MATERIAL") LoadMaterial(currentE, ss, reg, engine);
         else if (cmd == "LIGHT") LoadLight(currentE, ss, reg);
         else if (cmd == "CAMERA") LoadCamera(currentE, ss, reg);
+        else if (cmd == "TILEMAP") LoadTilemap(currentE, ss, file, reg, engine);
     }
     reg.SetNextEntity(maxE);
     file.close();
@@ -338,4 +340,45 @@ void SceneManager::LoadCamera(Entity e, std::istream &in, Registry &reg) {
     in >> cam.zoom >> cam.offset.x >> cam.offset.y >> cam.target.x >> cam.target.y >> cam.rotation >> primary;
     cam.isPrimary = (primary == 1);
     reg.AddComponent(e, cam);
+}
+
+// --- TILEMAP ---
+void SceneManager::SaveTilemap(Entity e, Registry &reg, std::ostream &out) {
+    auto &map = reg.tilemaps[e];
+    out << "TILEMAP " << map.width << " " << map.height << " " << map.tileSize << " " << std::quoted(map.tileSetPath) << " " << map.tiles.size() << "\n";
+    for (const auto &tile : map.tiles) {
+        out << "TILE " << tile.index << " " << (tile.flipX ? 1 : 0) << " " << (tile.flipY ? 1 : 0) << " " 
+            << (int)tile.tint.r << " " << (int)tile.tint.g << " " << (int)tile.tint.b << " " << (int)tile.tint.a << "\n";
+    }
+}
+
+void SceneManager::LoadTilemap(Entity e, std::istream &in_line, std::istream &in_file, Registry &reg, Engine *engine) {
+    TilemapComponent map;
+    int tileCount;
+    in_line >> map.width >> map.height >> map.tileSize >> std::quoted(map.tileSetPath) >> tileCount;
+    
+    for (int i = 0; i < tileCount; i++) {
+        std::string line;
+        while (std::getline(in_file, line) && line.empty());
+        std::stringstream ss(line);
+        std::string cmd;
+        ss >> cmd;
+        if (cmd == "TILE") {
+            Tile tile;
+            int fx, fy, r, g, b, a;
+            ss >> tile.index >> fx >> fy >> r >> g >> b >> a;
+            tile.flipX = (fx == 1);
+            tile.flipY = (fy == 1);
+            tile.tint = {(unsigned char)r, (unsigned char)g, (unsigned char)b, (unsigned char)a};
+            map.tiles.push_back(tile);
+        }
+    }
+
+    // Load TileSet into ResourceManager if path provided
+    if (!map.tileSetPath.empty() && engine) {
+        // Here we'd load the .tileset asset. 
+        // For now, let's assume the Editor handles creating/loading the TileSet resource.
+    }
+
+    reg.AddComponent(e, map);
 }

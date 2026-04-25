@@ -181,3 +181,18 @@ struct CameraComponent {
   float rotation = 0.0f;
   bool isPrimary = true;
 };
+
+struct Tile {
+    int index = -1; // -1 means empty
+    bool flipX = false;
+    bool flipY = false;
+    Color tint = WHITE;
+};
+
+struct TilemapComponent {
+    int width = 0;
+    int height = 0;
+    int tileSize = 32;
+    std::vector<Tile> tiles;
+    std::string tileSetPath = "";
+};
