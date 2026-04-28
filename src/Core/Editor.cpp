@@ -421,7 +421,7 @@ void Editor::DrawSceneView() {
     rlImGuiImageRenderTexture(&owner->viewportTarget);
 
     // Gizmo Toolbar Overlay
-    ImGui::SetCursorPos(ImVec2(20, 20));
+    ImGui::SetCursorPos(ImVec2(20, 40));
     ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 4.0f);
     ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0, 0, 0, 0.4f));
     if (ImGui::BeginChild("GizmoToolbar", ImVec2(110, 35), true,
@@ -478,14 +478,57 @@ void Editor::DrawGameView() {
   ImGui::End();
   ImGui::PopStyleVar();
 }
+void Editor::DrawTopBar() {
+    ImGuiViewport* viewport = ImGui::GetMainViewport();
 
+    // 1. Pin to the top-left, stretching across the full width
+	ImGui::SetNextWindowViewport(viewport->ID);
+    ImGui::SetNextWindowPos(viewport->Pos);
+    ImGui::SetNextWindowSize(ImVec2(viewport->Size.x, 32)); // Fixed height
+
+    ImGuiWindowFlags flags =
+        ImGuiWindowFlags_NoDecoration |
+        ImGuiWindowFlags_NoDocking |
+        ImGuiWindowFlags_NoMove |
+        ImGuiWindowFlags_NoSavedSettings |
+        ImGuiWindowFlags_NoBringToFrontOnFocus;
+
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(2, 2));
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.12f, 0.12f, 0.13f, 1.0f));
+
+    if (ImGui::Begin("##MainTopBar", nullptr, flags)) {
+        // Left: Editor Name / Project Info
+        ImGui::Text("BDEngine2D");
+        ImGui::SameLine();
+
+        // Middle: Spacer to push buttons to the right (if desired)
+        ImGui::Dummy(ImVec2(ImGui::GetContentRegionAvail().x - 120, 0));
+        ImGui::SameLine();
+
+        if (ImGui::Button(" - ")) { }
+        ImGui::SameLine();
+        if (ImGui::Button(" X ")) {
+            //SceneManager::SaveScene(
+            //    owner->activeScenePath,
+            //    *owner->registry);
+			owner->Exit();
+            ImGui::OpenPopup("Exit Application?");
+            showExitModal = true;
+        }
+    }
+    ImGui::End();
+
+    ImGui::PopStyleColor();
+    ImGui::PopStyleVar(2);
+}
 void Editor::DrawTransportBar() {
   ImGuiViewport *viewport = ImGui::GetMainViewport();
   // Center it at the top
   ImGui::SetNextWindowPos(
       ImVec2(viewport->Pos.x + viewport->Size.x * 0.5f, viewport->Pos.y + 25),
       ImGuiCond_Always, ImVec2(0.5f, 0.0f));
-  ImGui::SetNextWindowSize(ImVec2(120, 32));
+  ImGui::SetNextWindowSize(ImVec2(250, 32));
 
   ImGuiWindowFlags flags =
       ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoDocking |
@@ -497,13 +540,13 @@ void Editor::DrawTransportBar() {
   ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.1f, 0.1f, 0.1f, 0.7f));
 
   if (ImGui::Begin("##TransportBar", nullptr, flags)) {
-    float btnSize = 24;
+    float btnSize = 34;
 
     // Play Button
     bool isPlaying = (owner->playState == Engine::Playing);
     if (isPlaying)
       ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.7f, 0.2f, 1.0f));
-    if (ImGui::Button("PLAY", ImVec2(btnSize, btnSize))) {
+    if (ImGui::Button("PLAY", ImVec2(btnSize+30, btnSize))) {
       if (owner->playState == Engine::Stopped) {
         // SceneManager::SaveScene("temp_play.bds", *owner->registry);
         owner->playState = Engine::Playing;
@@ -520,7 +563,7 @@ void Editor::DrawTransportBar() {
     bool isPaused = (owner->playState == Engine::Paused);
     if (isPaused)
       ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.7f, 0.7f, 0.2f, 1.0f));
-    if (ImGui::Button("PAUSE", ImVec2(btnSize, btnSize))) {
+    if (ImGui::Button("PAUSE", ImVec2(btnSize+30, btnSize))) {
       if (owner->playState == Engine::Playing) {
         owner->playState = Engine::Paused;
       }
@@ -531,7 +574,7 @@ void Editor::DrawTransportBar() {
     ImGui::SameLine();
 
     // Stop Button
-    if (ImGui::Button("STOP", ImVec2(btnSize, btnSize))) {
+    if (ImGui::Button("STOP", ImVec2(btnSize+30, btnSize))) {
       if (owner->playState != Engine::Stopped) {
         // SceneManager::LoadScene("temp_play.bds", *owner->registry, owner);
         owner->playState = Engine::Stopped;
@@ -544,6 +587,26 @@ void Editor::DrawTransportBar() {
 }
 
 void Editor::Render() {
+    if (showExitModal) {
+        ImVec2 center = ImGui::GetMainViewport()->GetCenter();
+        ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+
+        if (ImGui::BeginPopupModal("Exit Application?", &showExitModal, ImGuiWindowFlags_AlwaysAutoResize)) {
+            ImGui::Text("Are you sure you want to close the editor?");
+            ImGui::Separator();
+
+            if (ImGui::Button("Yes, Close", ImVec2(120, 0))) {
+                owner->Exit();
+                showExitModal = false;
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Cancel", ImVec2(120, 0))) {
+                showExitModal = false;
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::EndPopup();
+        }
+    }
   if (!owner->projectManager.HasActiveProject()) {
     // Draw Project Hub
       int sw = GetScreenWidth();
@@ -645,8 +708,10 @@ void Editor::Render() {
       ImGui::Columns(1);
     }
     ImGui::End();
+    DrawTopBar();
     return;
   }
+  
   DrawTransportBar();
   DrawMenuBar(); // Handles its own BeginMenuBar/EndMenuBar
 
@@ -755,6 +820,7 @@ void Editor::Render() {
   }
 
   DrawTilingManager();
+  DrawTopBar();
 }
 
 void Editor::DrawMenuBar() {

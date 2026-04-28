@@ -22,6 +22,7 @@ public:
   void Update();
   void Render();
   void DrawTransportBar();
+  void DrawTopBar();
   void DrawUIPalette();
   void DrawUIViewport();
   void DrawSceneView();
@@ -68,6 +69,9 @@ public:
   bool showTilingManager = true;
   Entity activeTilemapEntity = -1;
   int brushSize = 1;
+
+  //Editor State
+  bool showExitModal = false;
 
   void DrawTilingManager();
 

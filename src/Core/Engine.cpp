@@ -15,6 +15,7 @@ Engine::Engine(int width, int height, const std::string &title)
     : screenWidth(width), screenHeight(height), windowTitle(title) {
 
   SetConfigFlags(FLAG_WINDOW_RESIZABLE);
+  SetConfigFlags(FLAG_WINDOW_UNDECORATED);
 
   Logger::Init();
   SetTraceLogCallback(Logger::RaylibLogCallback);
@@ -552,9 +553,9 @@ void Engine::Render() {
     // This prevents the "Forgot to call Render()" crash when toggling modes.
     rlImGuiBegin();
 
-    ImGui::SetNextWindowPos(ImVec2(0, 0));
+    ImGui::SetNextWindowPos(ImVec2(0, 32));
     ImGui::SetNextWindowSize(
-        ImVec2((float)GetScreenWidth(), (float)GetScreenHeight()));
+        ImVec2((float)GetScreenWidth(), (float)GetScreenHeight() - 32));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));

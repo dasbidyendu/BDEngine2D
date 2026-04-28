@@ -1,7 +1,7 @@
 #include "src/Core/Engine.h"
 
 int main() {
-	Engine game(800, 600, "BDEngine");
+	Engine game(GetScreenWidth()/2, GetScreenHeight()/2, "BDEngine");
 
 	game.InitGame();
 	game.Run();
