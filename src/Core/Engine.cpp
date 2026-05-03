@@ -509,8 +509,8 @@ void Engine::Render() {
           Vector2 worldMouse = GetScreenToWorld2D(relativeMouse, sceneCamera);
           
           Vector2 localMouse = { (worldMouse.x - t.position.x) / t.scale.x, (worldMouse.y - t.position.y) / t.scale.y };
-          int tileX = floor(localMouse.x / map.tileSize);
-          int tileY = floor(localMouse.y / map.tileSize);
+          int tileX = floor(localMouse.x / map.paintSize);
+          int tileY = floor(localMouse.y / map.paintSize);
           
           Color previewTint = (editor->currentTilingMode == Editor::TILE_ERASE) ? Fade(RED, 0.4f) : Fade(WHITE, 0.6f);
           
@@ -520,10 +520,10 @@ void Engine::Render() {
                   int ty = tileY + dy;
                   
                   Rectangle dest = {
-                      t.position.x + tx * map.tileSize * t.scale.x,
-                      t.position.y + ty * map.tileSize * t.scale.y,
-                      (float)map.tileSize * t.scale.x,
-                      (float)map.tileSize * t.scale.y
+                      t.position.x + tx * map.paintSize * t.scale.x,
+                      t.position.y + ty * map.paintSize * t.scale.y,
+                      (float)map.paintSize * t.scale.x,
+                      (float)map.paintSize * t.scale.y
                   };
                   
                   if (editor->currentTilingMode == Editor::TILE_PAINT && !map.tileSetPath.empty()) {
