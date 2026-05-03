@@ -31,10 +31,10 @@ namespace TilemapSystem {
                         if (tile.flipY) source.height *= -1;
 
                         Rectangle dest = {
-                            t.position.x + x * map.tileSize * t.scale.x,
-                            t.position.y + y * map.tileSize * t.scale.y,
-                            (float)map.tileSize * t.scale.x,
-                            (float)map.tileSize * t.scale.y
+                            t.position.x + x * map.paintSize * t.scale.x,
+                            t.position.y + y * map.paintSize * t.scale.y,
+                            (float)map.paintSize * t.scale.x,
+                            (float)map.paintSize * t.scale.y
                         };
 
                         DrawTexturePro(ts->texture, source, dest, {0,0}, 0.0f, tile.tint);
@@ -259,16 +259,18 @@ namespace RenderSystem {
 
 namespace InputSystem {
     inline void Update(Registry& reg) {
-        for (Entity i : reg.activeEntities) {
-            if (reg.HasComponent(i, COMP_INPUT)) {
-                auto& input = reg.inputComponents[i];
+		//--DEPRECATED--//
+		//--ONLY FOR DEMO PURPOSES--//
+        //for (Entity i : reg.activeEntities) {
+        //    if (reg.HasComponent(i, COMP_INPUT)) {
+        //        auto& input = reg.inputComponents[i];
 
-                input.up = IsKeyDown(KEY_W) || IsKeyDown(KEY_UP);
-                input.down = IsKeyDown(KEY_S) || IsKeyDown(KEY_DOWN);
-                input.left = IsKeyDown(KEY_A) || IsKeyDown(KEY_LEFT);
-                input.right = IsKeyDown(KEY_D) || IsKeyDown(KEY_RIGHT);
-            }
-        }
+        //        input.up = IsKeyDown(KEY_W) || IsKeyDown(KEY_UP);
+        //        input.down = IsKeyDown(KEY_S) || IsKeyDown(KEY_DOWN);
+        //        input.left = IsKeyDown(KEY_A) || IsKeyDown(KEY_LEFT);
+        //        input.right = IsKeyDown(KEY_D) || IsKeyDown(KEY_RIGHT);
+        //    }
+        //}
     }
 }
 

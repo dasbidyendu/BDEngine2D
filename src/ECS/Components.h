@@ -193,6 +193,7 @@ struct TilemapComponent {
     int width = 0;
     int height = 0;
     int tileSize = 32;
+    int paintSize = 64;
     std::vector<Tile> tiles;
     std::string tileSetPath = "";
 };

@@ -12,6 +12,7 @@
 #include <unordered_map>
 #include "Graphics/ShaderBuilder.h"
 #include "Managers/ResourceManager.h"
+#include "Managers/InputManager.h"
 #include "json.hpp"
 
 struct ScriptInstance {
@@ -100,7 +101,7 @@ public:
   Entity currentEntity = -1;
   std::string currentPath = "";
 
-  void Init(Registry &reg, Camera2D *cam, ResourceManager* resManager = nullptr) {
+  void Init(Registry &reg, Camera2D *cam, ResourceManager* resManager = nullptr, InputManager* inputManager = nullptr) {
     lua.open_libraries(sol::lib::base, sol::lib::math, sol::lib::string,
                        sol::lib::package, sol::lib::table);
 
@@ -540,21 +541,35 @@ public:
     lua["IsKeyDown"] = [](int key) { return ::IsKeyDown(key); };
     lua["GetDeltaTime"] = []() { return ::GetFrameTime(); };
 
-    lua["KEY_W"] = 87;
-    lua["KEY_A"] = 65;
-    lua["KEY_S"] = 83;
-    lua["KEY_D"] = 68;
-    lua["KEY_RIGHT"] = 262;
-    lua["KEY_LEFT"] = 263;
-    lua["KEY_UP"] = 265;
-    lua["KEY_DOWN"] = 264;
-    lua["KEY_SPACE"] = 32;
-    lua["IsMouseButtonPressed"] = [](int button) {
-      return ::IsMouseButtonPressed(button);
+    // Fixed: capture the local parameter `inputManager` so lambda can use it
+    lua["KeyDown"] = [this, inputManager](std::string key) { 
+        return inputManager ? inputManager->keyDown(key) : false; 
     };
-    lua["GetMousePos"] = []() { return GetMousePosition(); };
-    lua["MOUSE_LEFT"] = 0;
-
+    lua["KeyUp"] = [this, inputManager](std::string key) {
+        return inputManager ? inputManager->keyUp(key) : false;
+        };
+    lua["KeyPressed"] = [this, inputManager](std::string key) {
+        return inputManager ? inputManager->keyPressed(key) : false;
+        };
+    lua["KeyReleased"] = [this, inputManager](std::string key) {
+        return inputManager ? inputManager->keyReleased(key) : false;
+        };
+    lua["KeyPressedRepeat"] = [this, inputManager](std::string key) {
+        return inputManager ? inputManager->keyPressedRepeat(key) : false;
+        };
+    lua["MouseDown"] = [this, inputManager](std::string key) {
+        return inputManager ? inputManager->mouseDown(key) : false;
+        };
+    lua["MouseUp"] = [this, inputManager](std::string key) {
+        return inputManager ? inputManager->mouseUp(key) : false;
+        };
+    lua["MousePressed"] = [this, inputManager](std::string key) {
+        return inputManager ? inputManager->mousePressed(key) : false;
+        };
+    lua["MouseReleased"] = [this, inputManager](std::string key) {
+        return inputManager ? inputManager->mouseReleased(key) : false;
+        };
+    
     // NEW BINDINGS FOR JSON API
     lua.new_usertype<JsonBridge>("json",
         "decode", &JsonBridge::Decode,

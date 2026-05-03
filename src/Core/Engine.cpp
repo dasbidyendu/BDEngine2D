@@ -60,7 +60,7 @@ Engine::Engine(int width, int height, const std::string &title)
     scriptEngine = std::make_unique<ScriptEngine>();
     // Only init if pointer is valid
     if (scriptEngine) {
-      scriptEngine->Init(*registry, &camera, &assets);
+      scriptEngine->Init(*registry, &camera, &assets,&inputManager);
       Logger::AddLog(LOG_LEVEL_INFO, "SYSTEM: Script Engine Ready.");
     }
   } catch (...) {
@@ -69,7 +69,6 @@ Engine::Engine(int width, int height, const std::string &title)
   }
 
   editor = std::make_unique<Editor>(this);
-
 #ifndef BD_SHIPPING
   isEditorMode = true;
 #else
@@ -336,7 +335,7 @@ void Engine::Update() {
 
     // SIMULATION LOGIC (Always runs if Playing)
     if (playState == Playing) {
-      InputSystem::Update(*registry);
+      
       ControlSystem::Update(*registry);
 
       float dt = GetFrameTime();

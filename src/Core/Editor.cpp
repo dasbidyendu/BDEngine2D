@@ -183,8 +183,8 @@ void Editor::Update() {
                 auto& map = owner->registry->tilemaps[activeTilemapEntity];
                 auto& t = owner->registry->transforms[activeTilemapEntity];
                 Vector2 localMouse = { (worldMouse.x - t.position.x) / t.scale.x, (worldMouse.y - t.position.y) / t.scale.y };
-                int tileX = floor(localMouse.x / map.tileSize);
-                int tileY = floor(localMouse.y / map.tileSize);
+                int tileX = floor(localMouse.x / map.paintSize);
+                int tileY = floor(localMouse.y / map.paintSize);
                 bool isErase = IsMouseButtonDown(MOUSE_RIGHT_BUTTON) || currentTilingMode == TILE_ERASE;
 
                 for (int dy = 0; dy < brushSize; dy++) {
@@ -202,6 +202,10 @@ void Editor::Update() {
                     }
                 }
                 clickHandled = true; 
+            }
+            else if(IsKeyPressed(KEY_TAB)) {
+				clickHandled = true;
+				currentTilingMode = TILE_SELECT;
             }
         }
 
@@ -1482,6 +1486,8 @@ void DrawInspector(Entity e, Registry &reg, int screenWidth, int screenHeight,
           if (ImGui::InputInt("##TMHeight", &map.height)) map.tiles.resize(map.width * map.height);
           PropertyLabel("Tile Size");
           ImGui::InputInt("##TMTS", &map.tileSize);
+          PropertyLabel("Paint Size");
+		  ImGui::InputInt("##TMPS", &map.paintSize);
           PropertyLabel("TileSet");
           ImGui::Text("%s", map.tileSetPath.c_str());
           EndPropertyGrid();
