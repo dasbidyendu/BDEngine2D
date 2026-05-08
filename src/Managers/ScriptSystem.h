@@ -12,11 +12,81 @@
 #include <unordered_map>
 #include "Graphics/ShaderBuilder.h"
 #include "Managers/ResourceManager.h"
+#include "Managers/InputManager.h"
+#include "json.hpp"
 
 struct ScriptInstance {
   sol::environment env;
   sol::protected_function startFunc;
   sol::protected_function updateFunc;
+};
+
+class JsonBridge {
+public:
+    static sol::object JsonToLua(sol::state_view lua, const nlohmann::json& j) {
+        if (j.is_number_integer()) return sol::make_object(lua, j.get<int>());
+        if (j.is_number_float())   return sol::make_object(lua, j.get<float>());
+        if (j.is_string())         return sol::make_object(lua, j.get<std::string>());
+        if (j.is_boolean())        return sol::make_object(lua, j.get<bool>());
+
+        if (j.is_array()) {
+            sol::table t = lua.create_table();
+            for (size_t i = 0; i < j.size(); ++i) {
+                t[i + 1] = JsonToLua(lua, j[i]); // Lua is 1-indexed
+            }
+            return t;
+        }
+
+        if (j.is_object()) {
+            sol::table t = lua.create_table();
+            for (auto it = j.begin(); it != j.end(); ++it) {
+                t[it.key()] = JsonToLua(lua, it.value());
+            }
+            return t;
+        }
+
+        return sol::nil;
+    }
+
+    static sol::object Decode(sol::state_view lua, std::string jsonStr) {
+        auto j = nlohmann::json::parse(jsonStr);
+        return JsonToLua(lua, j);
+    }
+    static nlohmann::json TableToJson(sol::table table) {
+        nlohmann::json j;
+
+        for (auto const& [key, value] : table) {
+            // Handle Key
+            std::string k = (key.get_type() == sol::type::string)
+                ? key.as<std::string>()
+                : std::to_string(key.as<int>());
+
+            // Handle Value
+            switch (value.get_type()) {
+            case sol::type::table:
+                j[k] = TableToJson(value.as<sol::table>());
+                break;
+            case sol::type::string:
+                j[k] = value.as<std::string>();
+                break;
+            case sol::type::number:
+                j[k] = value.as<double>();
+                break;
+            case sol::type::boolean:
+                j[k] = value.as<bool>();
+                break;
+            default:
+                j[k] = nullptr;
+                break;
+            }
+        }
+        return j;
+    }
+
+    static std::string Encode(sol::table table) {
+        nlohmann::json j = TableToJson(table);
+        return j.dump(4);
+    }
 };
 
 class ScriptEngine {
@@ -31,7 +101,7 @@ public:
   Entity currentEntity = -1;
   std::string currentPath = "";
 
-  void Init(Registry &reg, Camera2D *cam, ResourceManager* resManager = nullptr) {
+  void Init(Registry &reg, Camera2D *cam, ResourceManager* resManager = nullptr, InputManager* inputManager = nullptr) {
     lua.open_libraries(sol::lib::base, sol::lib::math, sol::lib::string,
                        sol::lib::package, sol::lib::table);
 
@@ -471,20 +541,40 @@ public:
     lua["IsKeyDown"] = [](int key) { return ::IsKeyDown(key); };
     lua["GetDeltaTime"] = []() { return ::GetFrameTime(); };
 
-    lua["KEY_W"] = 87;
-    lua["KEY_A"] = 65;
-    lua["KEY_S"] = 83;
-    lua["KEY_D"] = 68;
-    lua["KEY_RIGHT"] = 262;
-    lua["KEY_LEFT"] = 263;
-    lua["KEY_UP"] = 265;
-    lua["KEY_DOWN"] = 264;
-    lua["KEY_SPACE"] = 32;
-    lua["IsMouseButtonPressed"] = [](int button) {
-      return ::IsMouseButtonPressed(button);
+    // Fixed: capture the local parameter `inputManager` so lambda can use it
+    lua["KeyDown"] = [this, inputManager](std::string key) { 
+        return inputManager ? inputManager->keyDown(key) : false; 
     };
-    lua["GetMousePos"] = []() { return GetMousePosition(); };
-    lua["MOUSE_LEFT"] = 0;
+    lua["KeyUp"] = [this, inputManager](std::string key) {
+        return inputManager ? inputManager->keyUp(key) : false;
+        };
+    lua["KeyPressed"] = [this, inputManager](std::string key) {
+        return inputManager ? inputManager->keyPressed(key) : false;
+        };
+    lua["KeyReleased"] = [this, inputManager](std::string key) {
+        return inputManager ? inputManager->keyReleased(key) : false;
+        };
+    lua["KeyPressedRepeat"] = [this, inputManager](std::string key) {
+        return inputManager ? inputManager->keyPressedRepeat(key) : false;
+        };
+    lua["MouseDown"] = [this, inputManager](std::string key) {
+        return inputManager ? inputManager->mouseDown(key) : false;
+        };
+    lua["MouseUp"] = [this, inputManager](std::string key) {
+        return inputManager ? inputManager->mouseUp(key) : false;
+        };
+    lua["MousePressed"] = [this, inputManager](std::string key) {
+        return inputManager ? inputManager->mousePressed(key) : false;
+        };
+    lua["MouseReleased"] = [this, inputManager](std::string key) {
+        return inputManager ? inputManager->mouseReleased(key) : false;
+        };
+    
+    // NEW BINDINGS FOR JSON API
+    lua.new_usertype<JsonBridge>("json",
+        "decode", &JsonBridge::Decode,
+        "encode", &JsonBridge::Encode
+    );
   }
 
   void LoadScript(Entity e, ScriptInstanceData& instInfo) {
@@ -594,4 +684,4 @@ public:
     currentEntity = -1;
     currentPath = "";
   }
-};
+};

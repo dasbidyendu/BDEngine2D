@@ -12,6 +12,7 @@
 #include "Managers/ProjectManager.h"
 #include "Managers/ResourceManager.h"
 #include "Managers/ScriptSystem.h"
+#include "Managers/InputManager.h"
 #include "Graphics/RenderPipeline.h"
 #include "Physics.h"
 #include "Profiler.h"
@@ -43,12 +44,15 @@ public:
   bool IsMouseOverViewport = false;
   bool isEditorMode = true;
   bool showSettings = false;
+  bool isGameViewFocused = false;
 
   enum PlayState { Stopped, Playing, Paused };
   PlayState playState = Stopped;
   std::string activeScenePath = "assets/scenes/main.bds";
 
   int activeControlId = 0;
+
+  InputManager inputManager;
 
   std::unique_ptr<Editor> editor;
 

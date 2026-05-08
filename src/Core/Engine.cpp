@@ -15,6 +15,7 @@ Engine::Engine(int width, int height, const std::string &title)
     : screenWidth(width), screenHeight(height), windowTitle(title) {
 
   SetConfigFlags(FLAG_WINDOW_RESIZABLE);
+  SetConfigFlags(FLAG_WINDOW_UNDECORATED);
 
   Logger::Init();
   SetTraceLogCallback(Logger::RaylibLogCallback);
@@ -59,7 +60,7 @@ Engine::Engine(int width, int height, const std::string &title)
     scriptEngine = std::make_unique<ScriptEngine>();
     // Only init if pointer is valid
     if (scriptEngine) {
-      scriptEngine->Init(*registry, &camera, &assets);
+      scriptEngine->Init(*registry, &camera, &assets,&inputManager);
       Logger::AddLog(LOG_LEVEL_INFO, "SYSTEM: Script Engine Ready.");
     }
   } catch (...) {
@@ -68,7 +69,6 @@ Engine::Engine(int width, int height, const std::string &title)
   }
 
   editor = std::make_unique<Editor>(this);
-
 #ifndef BD_SHIPPING
   isEditorMode = true;
 #else
@@ -335,7 +335,7 @@ void Engine::Update() {
 
     // SIMULATION LOGIC (Always runs if Playing)
     if (playState == Playing) {
-      InputSystem::Update(*registry);
+      
       ControlSystem::Update(*registry);
 
       float dt = GetFrameTime();
@@ -509,8 +509,8 @@ void Engine::Render() {
           Vector2 worldMouse = GetScreenToWorld2D(relativeMouse, sceneCamera);
           
           Vector2 localMouse = { (worldMouse.x - t.position.x) / t.scale.x, (worldMouse.y - t.position.y) / t.scale.y };
-          int tileX = floor(localMouse.x / map.tileSize);
-          int tileY = floor(localMouse.y / map.tileSize);
+          int tileX = floor(localMouse.x / map.paintSize);
+          int tileY = floor(localMouse.y / map.paintSize);
           
           Color previewTint = (editor->currentTilingMode == Editor::TILE_ERASE) ? Fade(RED, 0.4f) : Fade(WHITE, 0.6f);
           
@@ -520,10 +520,10 @@ void Engine::Render() {
                   int ty = tileY + dy;
                   
                   Rectangle dest = {
-                      t.position.x + tx * map.tileSize * t.scale.x,
-                      t.position.y + ty * map.tileSize * t.scale.y,
-                      (float)map.tileSize * t.scale.x,
-                      (float)map.tileSize * t.scale.y
+                      t.position.x + tx * map.paintSize * t.scale.x,
+                      t.position.y + ty * map.paintSize * t.scale.y,
+                      (float)map.paintSize * t.scale.x,
+                      (float)map.paintSize * t.scale.y
                   };
                   
                   if (editor->currentTilingMode == Editor::TILE_PAINT && !map.tileSetPath.empty()) {
@@ -552,9 +552,9 @@ void Engine::Render() {
     // This prevents the "Forgot to call Render()" crash when toggling modes.
     rlImGuiBegin();
 
-    ImGui::SetNextWindowPos(ImVec2(0, 0));
+    ImGui::SetNextWindowPos(ImVec2(0, 32));
     ImGui::SetNextWindowSize(
-        ImVec2((float)GetScreenWidth(), (float)GetScreenHeight()));
+        ImVec2((float)GetScreenWidth(), (float)GetScreenHeight() - 32));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
