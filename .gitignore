@@ -65,4 +65,4 @@ CppProperties.json
 /Int
 /Build
 EditorConfig.ini
-EditorConfig.ini
+/build_cmake
